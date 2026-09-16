@@ -30,12 +30,41 @@ npm run setup
 
 `npm run setup` checks your Node.js version and creates `.env` from `.env.example`. It never overwrites an existing `.env` file.
 
-### 3. Create and configure the Discord bot
+#### 3. Create and configure the Discord bot
 
-1. Create an application in the [Discord Developer Portal](https://discord.com/developers/applications).
-2. Open **Bot**, create a bot user, and copy its token.
-3. Under **Bot → Privileged Gateway Intents**, enable **Message Content Intent** and **Server Members Intent**.
-4. Open **OAuth2 → URL Generator**, select the `bot` scope and the `Send Messages`, `Manage Roles`, and `Manage Nicknames` permissions, then use the generated link to invite the bot to your server. Move the bot role above the `verify` role afterwards.
+Open the [Discord Developer Portal](https://discord.com/developers/applications), then create an application or select the existing bot application.
+
+#### Bot token
+
+1. Open **Bot** in the left sidebar and select **Reset Token** if the application does not have a token yet.
+2. Copy the token only to `DISCORD_TOKEN` in your local `.env` or Railway Variables. Treat it like a password: do not put it in Git, screenshots, or chat. Reset it immediately if exposed.
+
+#### Privileged Gateway Intents
+
+On **Bot → Privileged Gateway Intents**, turn on both of these settings and save:
+
+- **Message Content Intent** — required because this bot reads prefix commands such as `!verify` and `!chat`.
+- **Server Members Intent** — required to find a member, give the `verify` role, and update their nickname.
+
+If either setting is off, Discord closes the bot connection with `Used disallowed intents`. For bots in 100 or more servers, Discord must also approve these privileged intents after the bot is verified. See the [Discord Gateway intents documentation](https://docs.discord.com/developers/events/gateway).
+
+#### Invite the bot to your server
+
+1. Open **OAuth2 → URL Generator**.
+2. Under **Scopes**, select `bot`.
+3. Under **Bot Permissions**, select only the permissions the bot needs:
+   - **View Channels**
+   - **Send Messages**
+   - **Read Message History**
+   - **Manage Roles**
+   - **Manage Nicknames**
+4. Copy the generated URL, open it in a browser, choose your server, and authorize the bot. You need the server's **Manage Server** permission to install it.
+
+#### Role order and channel permissions
+
+Discord does not let a bot manage roles at or above its own top role. In the server, open **Server Settings → Roles**, then drag the bot role above `verify` and above every member role whose nickname it must change. Also make sure the channel where users run `!verify` allows the bot to view and send messages.
+
+After changing an intent or any Railway Variable, redeploy/restart the Railway service. A healthy deployment logs `online: ...` and `osu! verification callback listening on port ...`.
 
 ### 4. Configure your AI provider
 
