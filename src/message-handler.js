@@ -19,9 +19,19 @@ async function replyInChunks(message, answer) {
   }
 }
 
-function createMessageHandler({ bot, chat }) {
+function createMessageHandler({ bot, chat, osuVerification }) {
   return async (message) => {
     if (message.author.bot) return;
+
+    if (message.content === '!verify') {
+      await osuVerification.begin(message);
+      return;
+    }
+
+    if (message.content === '!verify-status') {
+      await osuVerification.showStatus(message);
+      return;
+    }
 
     if (message.content === '!ping') {
       await message.reply('pong 🏓');

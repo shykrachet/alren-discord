@@ -34,8 +34,8 @@ npm run setup
 
 1. Create an application in the [Discord Developer Portal](https://discord.com/developers/applications).
 2. Open **Bot**, create a bot user, and copy its token.
-3. Under **Bot → Privileged Gateway Intents**, enable **Message Content Intent**.
-4. Open **OAuth2 → URL Generator**, select the `bot` scope and the `Send Messages` permission, then use the generated link to invite the bot to your server.
+3. Under **Bot → Privileged Gateway Intents**, enable **Message Content Intent** and **Server Members Intent**.
+4. Open **OAuth2 → URL Generator**, select the `bot` scope and the `Send Messages`, `Manage Roles`, and `Manage Nicknames` permissions, then use the generated link to invite the bot to your server. Move the bot role above the `verify` role afterwards.
 
 ### 4. Configure your AI provider
 
@@ -57,6 +57,29 @@ OPENAI_API_KEY=sk-your-openai-key
 OPENAI_MODEL=gpt-5.4-mini
 ```
 
+### Enable osu! verification
+
+1. Create an OAuth application from [osu! account settings](https://osu.ppy.sh/home/account/edit#new-oauth-application).
+2. Add a public callback URL, for example `https://bot.example.com/osu/callback`. It must reach this bot's `VERIFY_PORT` through a reverse proxy, and must match exactly in osu! and `.env`.
+3. Add the credentials to `.env`:
+
+```env
+OSU_CLIENT_ID=12345
+OSU_CLIENT_SECRET=your-osu-client-secret
+OSU_REDIRECT_URI=https://bot.example.com/osu/callback
+VERIFY_PORT=3000
+```
+
+The bot creates the `verify` role the first time it is needed, or reuses a role with that name. The bot role must be higher than that role and than members whose nicknames it needs to change.
+
+### Deploy on Railway
+
+1. Deploy this repository as a Railway service. Railway detects `npm start` automatically.
+2. In **Settings → Networking → Public Networking**, choose **Generate Domain**. Copy the resulting `https://...up.railway.app` domain.
+3. In osu! OAuth application settings, set the callback URL to `https://your-service.up.railway.app/osu/callback`.
+4. In Railway **Variables**, add `DISCORD_TOKEN`, `OPENAI_API_KEY` (if chat is used), `OSU_CLIENT_ID`, `OSU_CLIENT_SECRET`, and set `OSU_REDIRECT_URI` to that exact callback URL. Do **not** set `PORT`; Railway supplies it.
+5. Optionally set the Railway health check path to `/health`.
+
 ### 5. Start the bot
 
 ```bash
@@ -74,3 +97,5 @@ When the terminal displays `online: ...`, the bot is ready.
 | `@Alren message` | Chat with the bot by mentioning it. |
 | `!reset` | Clear your chat context in the current channel. |
 | `!version` or `!ver` | Show the bot version. |
+| `!verify` | Open osu! OAuth verification. On success, changes your Discord nickname to your osu! username and gives the `verify` role. |
+| `!verify-status` | Show the linked osu! account in this server. |
