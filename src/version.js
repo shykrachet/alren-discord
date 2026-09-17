@@ -1,6 +1,6 @@
 const { version } = require('../package.json');
 
-const releaseNotes = 'รุ่นทดสอบแรก: แชท AI, จดจำบริบท และคำสั่งพื้นฐาน';
+const releaseNotes = 'osu! OAuth verification, configurable verification roles, Supabase storage, and English help messages.';
 
 function getReleaseChannel() {
   if (version.includes('-beta.')) return 'Beta';
@@ -10,7 +10,7 @@ function getReleaseChannel() {
 }
 
 function formatVersion() {
-  return `อัลเรน v${version} (${getReleaseChannel()})\n${releaseNotes}`;
+  return `Alren v${version} (${getReleaseChannel()})\n${releaseNotes}`;
 }
 
 module.exports = { formatVersion, getReleaseChannel, releaseNotes, version };

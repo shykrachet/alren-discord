@@ -43,7 +43,7 @@ Open the [Discord Developer Portal](https://discord.com/developers/applications)
 
 On **Bot → Privileged Gateway Intents**, turn on both of these settings and save:
 
-- **Message Content Intent** — required because this bot reads prefix commands such as `!verify` and `!chat`.
+- **Message Content Intent** — required because this bot reads prefix commands such as `!osuverify` and `!chat`.
 - **Server Members Intent** — required to find a member, give the `verify` role, and update their nickname.
 
 If either setting is off, Discord closes the bot connection with `Used disallowed intents`. For bots in 100 or more servers, Discord must also approve these privileged intents after the bot is verified. See the [Discord Gateway intents documentation](https://docs.discord.com/developers/events/gateway).
@@ -62,7 +62,7 @@ If either setting is off, Discord closes the bot connection with `Used disallowe
 
 #### Role order and channel permissions
 
-Discord does not let a bot manage roles at or above its own top role. In the server, open **Server Settings → Roles**, then drag the bot role above `verify` and above every member role whose nickname it must change. Also make sure the channel where users run `!verify` allows the bot to view and send messages.
+Discord does not let a bot manage roles at or above its own top role. In the server, open **Server Settings → Roles**, then drag the bot role above the selected verification role and above every member role whose nickname it must change. Also make sure the channel where users run `!osuverify` allows the bot to view and send messages.
 
 After changing an intent or any Railway Variable, redeploy/restart the Railway service. A healthy deployment logs `online: ...` and `osu! verification callback listening on port ...`.
 
@@ -99,14 +99,50 @@ OSU_REDIRECT_URI=https://bot.example.com/osu/callback
 VERIFY_PORT=3000
 ```
 
-The bot creates the `verify` role the first time it is needed, or reuses a role with that name. The bot role must be higher than that role and than members whose nicknames it needs to change.
+Before anyone can verify, a server administrator must choose which existing role the bot gives after a successful osu! verification. The administrator needs **Manage Server**, and the selected role must be below the bot's highest role:
+
+```text
+!verify-role @Verified
+```
+
+Check the current selection with `!verify-role-status`. Users cannot choose their own role.
+
+To verify, users copy the numeric ID from their osu! profile URL and run the command below in Discord. For example, the ID in `https://osu.ppy.sh/users/12852613` is `12852613`.
+
+```text
+!osuverify 12852613
+```
+
+The bot checks the public osu! profile before sending a unique, 10-minute OAuth link to that user's DM:
+
+```text
+Username IGN : username-from-osu
+ID osu : 12852613
+
+Click To verify
+```
+
+The `Click To verify` text is a personal link. The osu! account signed in through it must match the entered ID exactly. An osu! ID can only be linked to one Discord member per server.
+
+### Configure Supabase (required)
+
+Verification data, the configured Discord role, and temporary OAuth verification links are stored in Supabase. This keeps verification links valid across Railway restarts and deployments.
+
+1. In the Supabase project, open **SQL Editor** and run [supabase/schema.sql](supabase/schema.sql).
+2. In **Project Settings → API Keys**, copy the project URL and a server-only secret key. Use the current `sb_secret_...` key when available; the legacy service-role key also works.
+3. Add these variables locally or in Railway. Never expose the secret key in a browser, Discord message, Git repository, or screenshot.
+
+```env
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SECRET_KEY=your-server-only-supabase-secret
+```
 
 ### Deploy on Railway
 
 1. Deploy this repository as a Railway service. Railway detects `npm start` automatically.
 2. In **Settings → Networking → Public Networking**, choose **Generate Domain**. Copy the resulting `https://...up.railway.app` domain.
 3. In osu! OAuth application settings, set the callback URL to `https://your-service.up.railway.app/osu/callback`.
-4. In Railway **Variables**, add `DISCORD_TOKEN`, `OPENAI_API_KEY` (if chat is used), `OSU_CLIENT_ID`, `OSU_CLIENT_SECRET`, and set `OSU_REDIRECT_URI` to that exact callback URL. Do **not** set `PORT`; Railway supplies it.
+4. In Railway **Variables**, add `DISCORD_TOKEN`, `OPENAI_API_KEY` (if chat is used), `OSU_CLIENT_ID`, `OSU_CLIENT_SECRET`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and set `OSU_REDIRECT_URI` to that exact callback URL. Do **not** set `PORT`; Railway supplies it.
 5. Optionally set the Railway health check path to `/health`.
 
 ### 5. Start the bot
@@ -117,6 +153,16 @@ npm start
 
 When the terminal displays `online: ...`, the bot is ready.
 
+## Releases
+
+Versioning is automated with Release Please. Push conventional commits to the `latest-version` branch, then let the generated Release PR update `package.json`, `package-lock.json`, the changelog, and the GitHub release tag.
+
+- `feat: ...` creates the next beta feature release.
+- `fix: ...` creates the next beta patch release.
+- `feat!: ...` or a `BREAKING CHANGE:` footer creates the next beta breaking-change release.
+
+Merge the Release PR when it is ready; do not edit version numbers by hand.
+
 ## Commands
 
 | Command | Description |
@@ -126,5 +172,8 @@ When the terminal displays `online: ...`, the bot is ready.
 | `@Alren message` | Chat with the bot by mentioning it. |
 | `!reset` | Clear your chat context in the current channel. |
 | `!version` or `!ver` | Show the bot version. |
-| `!verify` | Open osu! OAuth verification. On success, changes your Discord nickname to your osu! username and gives the `verify` role. |
-| `!verify-status` | Show the linked osu! account in this server. |
+| `!alrenhelp` | Show all commands and the osu! verification setup flow. |
+| `!verify-role @role` | Set the role awarded after osu! verification. Requires Manage Server. |
+| `!verify-role-status` | Show the role currently awarded by osu! verification. |
+| `!osuverify osu_user_id` | Send a private OAuth link that verifies the entered osu! user ID. On success, changes your Discord nickname and gives the configured verification role. |
+| `!osuverify-status` | Show the linked osu! account in this server. |
