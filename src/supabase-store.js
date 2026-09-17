@@ -27,8 +27,11 @@ function createSupabaseStore({ url, secretKey }) {
       console.error(`Supabase ${method} ${table} failed:`, response.status, await response.text());
       throw new Error('Could not connect to Supabase. Please try again.');
     }
-    if (response.status === 204) return null;
-    return response.json();
+    // PostgREST can return an empty body with either 201 or 204 when a write
+    // uses `Prefer: return=minimal`. Do not attempt to parse that as JSON.
+    const text = await response.text();
+    if (!text.trim()) return null;
+    return JSON.parse(text);
   }
 
   async function getVerification(guildId, discordUserId) {
