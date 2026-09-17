@@ -111,19 +111,19 @@ Public chat through `!chat`, bot mentions, and `!reset` is disabled.
 Choose the Discord role members receive after a successful verification:
 
 ```text
-/verify-role role:@role
+!verify-role @role
 ```
 
 The Alren role must be above the selected role in **Server Settings → Roles**.
 
 ### For members
 
-1. Open the osu! profile URL, for example `https://osu.ppy.sh/users/your-id-osu`.
+1. Open the osu! profile URL, for example `https://osu.ppy.sh/users/[your-id-osu]`.
 2. Copy the number at the end of the link.
-3. Run the command in the Discord server and enter the copied number:
+3. Run the command in the Discord server:
 
 ```text
-/osuverify osu_user_id:your-id-osu
+!osuverify [your-id-osu]
 ```
 
 4. Alren sends a personal verification link by DM.
@@ -144,7 +144,7 @@ The verification link lasts for 10 minutes and can only verify the osu! ID enter
 | `!alrenhelp` | Show this guide in the channel. |
 | `!ping` | Check whether Alren is online. |
 | `!version` or `!ver` | Show the bot version. |
-| `/verify-role role` | Set the role awarded after osu! verification privately. Requires Manage Server. |
-| `/verify-role-status` | Show the configured verification role privately. |
-| `/osuverify osu_user_id` | Send a private osu! OAuth verification link. |
-| `/osuverify-status` | Show the linked osu! account privately. |
+| `!verify-role @role` | Set the role awarded after osu! verification. Requires Manage Server. |
+| `!verify-role-status` | Show the configured verification role. |
+| `!osuverify osu_user_id` | Send a private osu! OAuth verification link. |
+| `!osuverify-status` | Show the linked osu! account in this server. |
