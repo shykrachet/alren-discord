@@ -98,6 +98,66 @@ function createSupabaseStore({ url, secretKey }) {
     });
   }
 
+  async function getMapSettings(guildId) {
+    const rows = await request('osu_map_settings', {
+      params: {
+        select: 'channel_id,mode_filter,status_filter',
+        guild_id: `eq.${guildId}`,
+        limit: '1',
+      },
+    });
+    return rows[0] ?? null;
+  }
+
+  async function saveMapSettings(guildId, { channelId, mode, status }) {
+    await request('osu_map_settings', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      params: { on_conflict: 'guild_id' },
+      body: {
+        guild_id: guildId,
+        channel_id: channelId,
+        mode_filter: mode,
+        status_filter: status,
+        updated_at: new Date().toISOString(),
+      },
+    });
+  }
+
+  async function listMapSettings() {
+    return request('osu_map_settings', {
+      params: {
+        select: 'guild_id,channel_id,mode_filter,status_filter',
+        channel_id: 'not.is.null',
+      },
+    });
+  }
+
+  async function hasPostedMap(guildId, beatmapsetId, status) {
+    const rows = await request('osu_map_posts', {
+      params: {
+        select: 'beatmapset_id',
+        guild_id: `eq.${guildId}`,
+        beatmapset_id: `eq.${beatmapsetId}`,
+        status: `eq.${status}`,
+        limit: '1',
+      },
+    });
+    return Boolean(rows[0]);
+  }
+
+  async function markMapPosted(guildId, beatmapsetId, status) {
+    await request('osu_map_posts', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=ignore-duplicates,return=minimal' },
+      body: {
+        beatmapset_id: String(beatmapsetId),
+        guild_id: guildId,
+        status,
+      },
+    });
+  }
+
   async function createVerificationRequest({ channelId, discordUserId, expiresAt, guildId, osuUserId, state }) {
     await request('osu_verification_requests', {
       method: 'POST',
@@ -136,9 +196,14 @@ function createSupabaseStore({ url, secretKey }) {
     findOtherOwner,
     getVerification,
     getVerificationRole,
+    getMapSettings,
+    hasPostedMap,
     isConfigured: Boolean(baseUrl && secretKey),
+    listMapSettings,
+    markMapPosted,
     saveVerification,
     saveVerificationRole,
+    saveMapSettings,
   };
 }
 
