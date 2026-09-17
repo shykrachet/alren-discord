@@ -27,7 +27,7 @@ const chat = openai ? createChatService(openai) : null;
 const verificationStore = createSupabaseStore({ url: SUPABASE_URL, secretKey: SUPABASE_SECRET_KEY });
 const osuVerification = createOsuVerificationService({ bot, store: verificationStore });
 
-bot.once('ready', async () => {
+bot.once('clientReady', async () => {
   console.log(`online: ${bot.user.tag}`);
   if (!chat) console.warn('Chat is disabled: add OPENAI_API_KEY to .env');
   try {
@@ -42,8 +42,16 @@ bot.once('ready', async () => {
   }
 });
 
-bot.on('messageCreate', createMessageHandler({ bot, osuVerification }));
-bot.on('interactionCreate', createInteractionHandler({ chat }));
+bot.on('messageCreate', createMessageHandler({ bot }));
+const handleInteraction = createInteractionHandler({ chat, osuVerification });
+bot.on('interactionCreate', (interaction) => {
+  handleInteraction(interaction).catch((error) => {
+    console.error('Interaction handler failed:', error.message);
+  });
+});
+bot.on('error', (error) => {
+  console.error('Discord client error:', error.message);
+});
 
 if (!DISCORD_TOKEN) throw new Error('Missing DISCORD_TOKEN in .env');
 

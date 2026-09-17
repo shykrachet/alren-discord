@@ -118,12 +118,12 @@ The Alren role must be above the selected role in **Server Settings → Roles**.
 
 ### For members
 
-1. Open the osu! profile URL, for example `https://osu.ppy.sh/users/your-id-osu`.
+1. Open the osu! profile URL, for example `https://osu.ppy.sh/users/[your-id-osu]`.
 2. Copy the number at the end of the link.
 3. Run the command in the Discord server:
 
 ```text
-!osuverify your-id-osu
+!osuverify [your-id-osu]
 ```
 
 4. Alren sends a personal verification link by DM.
