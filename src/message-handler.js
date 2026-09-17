@@ -26,6 +26,7 @@ function formatHelp() {
     '**General commands**',
     '`!ping` — Check whether the bot is online.',
     '`!chat <message>` or mention the bot — Chat with Alren.',
+    '`/alren message:<message>` — Private chat visible only to you. The reply deletes automatically after 5 minutes.',
     '`!reset` — Clear your chat memory in this channel.',
     '`!version` — Show the bot version.',
     '',

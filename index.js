@@ -8,6 +8,7 @@ const {
 const { createChatService } = require('./src/chat');
 const { createMessageHandler } = require('./src/message-handler');
 const { createOsuVerificationService } = require('./src/osu-verification');
+const { createInteractionHandler, registerSlashCommands } = require('./src/slash-commands');
 const { createSupabaseStore } = require('./src/supabase-store');
 
 const bot = new Client({
@@ -30,6 +31,11 @@ bot.once('ready', async () => {
   console.log(`online: ${bot.user.tag}`);
   if (!chat) console.warn('Chat is disabled: add OPENAI_API_KEY to .env');
   try {
+    await registerSlashCommands({ client: bot, token: DISCORD_TOKEN });
+  } catch (error) {
+    console.error('Could not register slash commands:', error.message);
+  }
+  try {
     await osuVerification.startServer();
   } catch (error) {
     console.error('osu! verification is disabled:', error.message);
@@ -37,6 +43,7 @@ bot.once('ready', async () => {
 });
 
 bot.on('messageCreate', createMessageHandler({ bot, chat, osuVerification }));
+bot.on('interactionCreate', createInteractionHandler({ chat }));
 
 if (!DISCORD_TOKEN) throw new Error('Missing DISCORD_TOKEN in .env');
 
