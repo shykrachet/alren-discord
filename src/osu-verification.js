@@ -67,17 +67,23 @@ function createOsuVerificationService({ bot, store }) {
     const guild = await bot.guilds.fetch(guildId);
     const member = await guild.members.fetch(discordUserId);
     const { role, me } = await getVerificationRole(guild);
-    if (!me.permissions.has(PermissionsBitField.Flags.ManageNicknames)) {
+    const canManageNicknames = me.permissions.has(PermissionsBitField.Flags.ManageNicknames);
+    const isServerOwner = guild.ownerId === member.id;
+
+    if (!canManageNicknames && !isServerOwner) {
       throw new Error('The bot needs the Manage Nicknames permission to update Discord nicknames.');
     }
-    if (!member.manageable) {
+    if (!member.manageable && !isServerOwner) {
       throw new Error('The bot cannot update this member\'s nickname because their role is equal to or higher than the bot\'s role.');
     }
 
     await member.roles.add(role, 'Verified through osu! OAuth');
-    await member.setNickname(osuUser.username, 'Verified through osu! OAuth');
+    const nicknameUpdated = canManageNicknames && member.manageable;
+    if (nicknameUpdated) {
+      await member.setNickname(osuUser.username, 'Verified through osu! OAuth');
+    }
     await store.saveVerification({ guildId, discordUserId, osuUser });
-    return role;
+    return { nicknameUpdated, role };
   }
 
   async function exchangeCodeForOsuUser(code) {
@@ -172,15 +178,21 @@ function createOsuVerificationService({ bot, store }) {
       if (await store.findOtherOwner(pending.guild_id, pending.discord_user_id, osuUser.id)) {
         throw new Error('This osu! ID is already verified by another member of this server.');
       }
-      const role = await applyDiscordVerification({
+      const result = await applyDiscordVerification({
         discordUserId: pending.discord_user_id,
         guildId: pending.guild_id,
         osuUser,
       });
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      response.end(htmlPage('Verification complete!', `Welcome, ${osuUser.username}. Your Discord nickname and ${role.name} role have been set.`, true));
+      const completionMessage = result.nicknameUpdated
+        ? `Welcome, ${osuUser.username}. Your Discord nickname and ${result.role.name} role have been set.`
+        : `Welcome, ${osuUser.username}. Your ${result.role.name} role has been set. Discord does not allow bots to change a server owner's nickname.`;
+      response.end(htmlPage('Verification complete!', completionMessage, true));
       const channel = await bot.channels.fetch(pending.channel_id);
-      if (channel?.isTextBased()) await channel.send(`✅ <@${pending.discord_user_id}> verified as **${osuUser.username}** and received the <@&${role.id}> role.`);
+      if (channel?.isTextBased()) {
+        const nicknameNotice = result.nicknameUpdated ? '' : ' Their nickname was unchanged because they are the server owner.';
+        await channel.send(`✅ <@${pending.discord_user_id}> verified as **${osuUser.username}** and received the <@&${result.role.id}> role.${nicknameNotice}`);
+      }
     } catch (error) {
       console.error('osu! verification callback failed:', error);
       response.writeHead(500, { 'content-type': 'text/html; charset=utf-8' });
