@@ -1,5 +1,5 @@
 const {
-  MessageFlags, PermissionsBitField, REST, Routes, SlashCommandBuilder,
+  ChannelType, MessageFlags, PermissionsBitField, REST, Routes, SlashCommandBuilder,
 } = require('discord.js');
 const { formatHelp } = require('./message-handler');
 const { createMapEmbed } = require('./osu-maps');
@@ -12,6 +12,13 @@ const MAP_STATUS_CHOICES = [
 ];
 const MAP_MODE_CHOICES = [
   { name: 'Any mode', value: 'any' },
+  { name: 'osu!', value: 'osu' },
+  { name: 'osu!taiko', value: 'taiko' },
+  { name: 'osu!catch', value: 'catch' },
+  { name: 'osu!mania', value: 'mania' },
+];
+const BN_MODE_CHOICES = [
+  { name: 'All osu! modes', value: 'all' },
   { name: 'osu!', value: 'osu' },
   { name: 'osu!taiko', value: 'taiko' },
   { name: 'osu!catch', value: 'catch' },
@@ -82,6 +89,18 @@ const OSU_MAP_SETTINGS_COMMAND = new SlashCommandBuilder()
     .setDescription('Default game mode')
     .addChoices(...MAP_MODE_CHOICES));
 
+const COMMUNITY_ALERT_SETTINGS_COMMAND = new SlashCommandBuilder()
+  .setName('community-alert-settings')
+  .setDescription('Configure BN and Mappers’ Guild alerts privately.')
+  .addChannelOption((option) => option
+    .setName('channel')
+    .setDescription('Channel that receives alerts')
+    .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+  .addStringOption((option) => option
+    .setName('bn_mode')
+    .setDescription('BN request mode to notify about')
+    .addChoices(...BN_MODE_CHOICES));
+
 const COMMANDS = [
   CHAT_COMMAND.toJSON(),
   CLEAR_CHAT_COMMAND.toJSON(),
@@ -92,6 +111,7 @@ const COMMANDS = [
   VERIFY_ROLE_STATUS_COMMAND.toJSON(),
   OSU_MAP_COMMAND.toJSON(),
   OSU_MAP_SETTINGS_COMMAND.toJSON(),
+  COMMUNITY_ALERT_SETTINGS_COMMAND.toJSON(),
 ];
 const DEFAULT_DELETE_AFTER_SECONDS = 300;
 
@@ -129,6 +149,10 @@ function describeFilters({ mode, status }) {
   return `${statusName} · ${modeName}`;
 }
 
+function describeBnMode(mode) {
+  return BN_MODE_CHOICES.find((choice) => choice.value === mode)?.name ?? 'All osu! modes';
+}
+
 async function registerSlashCommands({ client, token }) {
   if (!client.user || !token) return;
 
@@ -141,9 +165,58 @@ async function registerSlashCommands({ client, token }) {
   console.log(`registered /alren in ${guilds.length} server(s)`);
 }
 
-function createInteractionHandler({ chat, osuMaps, osuVerification }) {
+function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
   return async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
+
+    if (interaction.commandName === 'community-alert-settings') {
+      if (!interaction.inGuild()) {
+        await interaction.reply({
+          content: 'This command can only be used in a server.',
+          flags: MessageFlags.Ephemeral,
+        });
+        scheduleReplyDeletion(interaction);
+        return;
+      }
+      if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageGuild)) {
+        await interaction.reply({
+          content: 'You need the Manage Server permission to change community alert settings.',
+          flags: MessageFlags.Ephemeral,
+        });
+        scheduleReplyDeletion(interaction);
+        return;
+      }
+      if (!store?.isConfigured) {
+        await interaction.reply({
+          content: 'Community alerts need Supabase. Add SUPABASE_URL and SUPABASE_SECRET_KEY first.',
+          flags: MessageFlags.Ephemeral,
+        });
+        scheduleReplyDeletion(interaction);
+        return;
+      }
+
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      try {
+        const current = await store.getCommunityAlertSettings(interaction.guildId);
+        const selectedChannel = interaction.options.getChannel('channel');
+        const selectedMode = interaction.options.getString('bn_mode');
+        const channelId = selectedChannel?.id || current?.channel_id;
+        const bnMode = selectedMode || current?.bn_mode_filter || 'all';
+        if (!channelId) {
+          await interaction.editReply('Select a channel the first time, for example `/community-alert-settings channel:#alerts`.');
+        } else if (!selectedChannel && !selectedMode) {
+          await interaction.editReply(`Community alerts are configured for <#${channelId}>. BN requests: **${describeBnMode(bnMode)}**. New Mappers’ Guild missions: **all missions**.`);
+        } else {
+          await store.saveCommunityAlertSettings(interaction.guildId, { bnMode, channelId });
+          await interaction.editReply(`Community alerts will be posted in <#${channelId}>. BN requests: **${describeBnMode(bnMode)}**. New Mappers’ Guild missions: **all missions**.`);
+        }
+      } catch (error) {
+        console.error('Community alert settings failed:', error.message);
+        await interaction.editReply('I could not save the community alert settings. Apply the Supabase schema and try again.');
+      }
+      scheduleReplyDeletion(interaction);
+      return;
+    }
 
     if (interaction.commandName === 'osumap-settings') {
       if (!interaction.inGuild()) {

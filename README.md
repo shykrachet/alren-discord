@@ -83,7 +83,7 @@ VERIFY_PORT=3000
 
 ### 6. Configure Supabase
 
-1. In Supabase, open **SQL Editor** and apply your project schema. The bot expects the `osu_verifications`, `osu_verification_settings`, `osu_verification_requests`, `osu_map_settings`, and `osu_map_posts` tables.
+1. In Supabase, open **SQL Editor** and apply your project schema. The bot expects the `osu_verifications`, `osu_verification_settings`, `osu_verification_requests`, `osu_map_settings`, `osu_map_posts`, and `community_alert_settings` tables.
 2. Copy the project URL and a server-only secret key from **Project Settings → API Keys**.
 3. Add them to `.env` or Railway Variables:
 
@@ -174,7 +174,48 @@ Set `OSU_MAP_FEED_INTERVAL_MINUTES` in `.env` or Railway Variables to change the
 OSU_MAP_FEED_INTERVAL_MINUTES=15
 ```
 
-After updating the bot, reapply your project schema in Supabase SQL Editor so the `osu_map_settings` and `osu_map_posts` tables are available.
+After updating the bot, reapply your project schema in Supabase SQL Editor so the `osu_map_settings`, `osu_map_posts`, and `community_alert_settings` tables are available.
+
+## BN and Mappers' Guild alerts
+
+Alren can monitor two public community data sources:
+
+- BN request status from `bn.mappersguild.com`. A notification is sent when a BN changes from Closed or Unknown to Open.
+- Mappers' Guild activity logs. A notification is sent when a new mission is opened.
+
+Run [`supabase/community_alert_settings.sql`](supabase/community_alert_settings.sql) in Supabase SQL Editor once. Then, in Discord, an administrator with **Manage Server** can configure the alert destination and BN mode:
+
+```text
+/community-alert-settings channel:#alerts bn_mode:osu!
+```
+
+Choose `All osu! modes`, `osu!`, `osu!taiko`, `osu!catch`, or `osu!mania`. The BN mode filter applies only to BN request-opening messages; new Mappers' Guild missions are always sent to the selected channel. Run the command again with no options to view the saved setting, or provide one option to change just that value.
+
+Set the optional polling interval in `.env` or Railway Variables:
+
+```env
+COMMUNITY_ALERT_INTERVAL_MINUTES=5
+```
+
+The interval accepts values from 1–60 minutes. When the bot starts, it records the current state as a baseline without sending old notifications. Later checks notify only new Open transitions and new mission-opening events.
+
+The bot role needs **View Channel** and **Send Messages** permissions in the configured channel.
+
+### Community alerts API
+
+The same normalized public data is available from the bot's HTTP server:
+
+```http
+GET /api/community-alerts
+```
+
+For a Railway deployment, the full URL is:
+
+```text
+https://your-service.up.railway.app/api/community-alerts
+```
+
+The JSON response contains `checkedAt`, normalized `bnRequests.entries`, and recent `missions.recentOpenings`. Responses are cached for 60 seconds to avoid excessive requests to the upstream sites. The API contains only public data and does not require an osu! or Mappers' Guild login.
 
 ## Commands
 
@@ -193,6 +234,7 @@ After updating the bot, reapply your project schema in Supabase SQL Editor so th
 | `/osumap` | Post a random beatmap publicly using this server’s saved filters. |
 | `/osumap status mode` | Post a map with temporary status and/or mode filters. |
 | `/osumap-settings status mode` | Set the current channel as the automatic beatmap feed and save optional filters privately. Requires Manage Server. |
+| `/community-alert-settings channel bn_mode` | Set the channel and BN mode for BN/Mappers' Guild notifications privately. Requires Manage Server. |
 
 ## Troubleshooting
 
