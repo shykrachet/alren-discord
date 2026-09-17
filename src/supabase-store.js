@@ -133,6 +133,40 @@ function createSupabaseStore({ url, secretKey }) {
     });
   }
 
+  async function getCommunityAlertSettings(guildId) {
+    const rows = await request('community_alert_settings', {
+      params: {
+        select: 'channel_id,bn_mode_filter',
+        guild_id: `eq.${guildId}`,
+        limit: '1',
+      },
+    });
+    return rows[0] ?? null;
+  }
+
+  async function saveCommunityAlertSettings(guildId, { channelId, bnMode }) {
+    await request('community_alert_settings', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      params: { on_conflict: 'guild_id' },
+      body: {
+        guild_id: guildId,
+        channel_id: channelId,
+        bn_mode_filter: bnMode,
+        updated_at: new Date().toISOString(),
+      },
+    });
+  }
+
+  async function listCommunityAlertSettings() {
+    return request('community_alert_settings', {
+      params: {
+        select: 'guild_id,channel_id,bn_mode_filter',
+        channel_id: 'not.is.null',
+      },
+    });
+  }
+
   async function hasPostedMap(guildId, beatmapsetId, status) {
     const rows = await request('osu_map_posts', {
       params: {
@@ -197,13 +231,16 @@ function createSupabaseStore({ url, secretKey }) {
     getVerification,
     getVerificationRole,
     getMapSettings,
+    getCommunityAlertSettings,
     hasPostedMap,
     isConfigured: Boolean(baseUrl && secretKey),
     listMapSettings,
+    listCommunityAlertSettings,
     markMapPosted,
     saveVerification,
     saveVerificationRole,
     saveMapSettings,
+    saveCommunityAlertSettings,
   };
 }
 

@@ -1,0 +1,125 @@
+const assert = require('node:assert/strict');
+const test = require('node:test');
+const {
+  createCommunityAlertsService,
+  normalizeBnRequests,
+  normalizeMissionOpenings,
+  shouldDeliverCommunityAlert,
+} = require('../src/community-alerts');
+
+function bnResponse(status) {
+  return {
+    allUsersByMode: [{
+      _id: 'osu',
+      users: [{
+        id: 'bn-id',
+        username: 'Mapper',
+        osuId: 123,
+        mode: 'osu',
+        requestStatus: status === 'open' ? ['personalQueue'] : ['personalQueue', 'closed'],
+        requestLink: 'https://example.com/queue',
+      }],
+    }],
+  };
+}
+
+function missionResponse(logs) {
+  return { logs };
+}
+
+test('normalizes BN request status using the upstream UI rules', () => {
+  const entries = normalizeBnRequests({
+    allUsersByMode: [{
+      _id: 'mania',
+      users: [
+        { id: '1', username: 'Open', osuId: 1, requestStatus: ['gameChat'] },
+        { id: '2', username: 'Closed', osuId: 2, requestStatus: ['closed'] },
+        { id: '3', username: 'Unknown', osuId: 3, requestStatus: [] },
+      ],
+    }],
+  });
+  assert.deepEqual(entries.map((entry) => entry.status), ['open', 'closed', 'unknown']);
+  assert.equal(entries[0].mode, 'mania');
+});
+
+test('normalizes only mission-open log events', () => {
+  const missions = normalizeMissionOpenings(missionResponse([
+    { id: '1', category: 'mission', action: '"New mission" opened', createdAt: '2026-09-17T00:00:00Z' },
+    { id: '2', category: 'mission', action: 'removed a map from mission' },
+    { id: '3', category: 'party', action: '"Not a mission" opened' },
+  ]));
+  assert.deepEqual(missions, [{
+    id: '1',
+    name: 'New mission',
+    openedAt: '2026-09-17T00:00:00Z',
+    url: 'https://mappersguild.com/missions',
+  }]);
+});
+
+test('delivers BN alerts only for the configured mode and always delivers missions', () => {
+  const settings = { channel_id: 'alerts', bn_mode_filter: 'mania' };
+  assert.equal(shouldDeliverCommunityAlert({
+    type: 'bn-open', entry: { mode: 'mania' },
+  }, settings), true);
+  assert.equal(shouldDeliverCommunityAlert({
+    type: 'bn-open', entry: { mode: 'osu' },
+  }, settings), false);
+  assert.equal(shouldDeliverCommunityAlert({ type: 'mission-open' }, settings), true);
+  assert.equal(shouldDeliverCommunityAlert({ type: 'mission-open' }, {
+    bn_mode_filter: 'all',
+  }), false);
+});
+
+test('first check creates a baseline and the next check emits only transitions', async () => {
+  let bnCalls = 0;
+  let missionCalls = 0;
+  const fetchImpl = async (url) => {
+    const value = String(url).includes('bn.mappersguild.com')
+      ? [bnResponse('closed'), bnResponse('open')][bnCalls++]
+      : [
+        missionResponse([{ id: 'old', category: 'mission', action: '"Old" opened' }]),
+        missionResponse([
+          { id: 'new', category: 'mission', action: '"New" opened' },
+          { id: 'old', category: 'mission', action: '"Old" opened' },
+        ]),
+      ][missionCalls++];
+    return { ok: true, json: async () => value };
+  };
+  const alerts = [];
+  const service = createCommunityAlertsService({ fetchImpl });
+
+  await service.checkNow((alert) => alerts.push(alert));
+  assert.equal(alerts.length, 0);
+  await service.checkNow((alert) => alerts.push(alert));
+  assert.deepEqual(alerts.map((alert) => alert.type), ['bn-open', 'mission-open']);
+  assert.equal(alerts[1].mission.name, 'New');
+});
+
+test('API handler returns the normalized public snapshot', async () => {
+  const service = createCommunityAlertsService({
+    fetchImpl: async (url) => ({
+      ok: true,
+      json: async () => (String(url).includes('bn.mappersguild.com')
+        ? bnResponse('open')
+        : missionResponse([{ id: '1', category: 'mission', action: '"Mission" opened' }])),
+    }),
+  });
+  const headers = {};
+  let statusCode;
+  let body;
+  const handled = await service.handleApiRequest(
+    { method: 'GET', url: '/api/community-alerts' },
+    {
+      setHeader: (name, value) => { headers[name] = value; },
+      writeHead: (status) => { statusCode = status; },
+      end: (value) => { body = value; },
+    },
+  );
+
+  assert.equal(handled, true);
+  assert.equal(statusCode, 200);
+  assert.equal(headers['access-control-allow-origin'], '*');
+  const parsed = JSON.parse(body);
+  assert.equal(parsed.bnRequests.entries[0].status, 'open');
+  assert.equal(parsed.missions.recentOpenings[0].name, 'Mission');
+});

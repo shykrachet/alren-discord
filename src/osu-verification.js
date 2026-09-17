@@ -33,7 +33,7 @@ function escapeHtml(value) {
   })[character]);
 }
 
-function createOsuVerificationService({ bot, store }) {
+function createOsuVerificationService({ apiHandler, bot, store }) {
   let server;
 
   async function validateAssignableRole(guild, role) {
@@ -140,18 +140,25 @@ function createOsuVerificationService({ bot, store }) {
   }
 
   async function handleCallback(request, response) {
-    const requestUrl = new URL(request.url, OSU_REDIRECT_URI);
+    const requestUrl = new URL(request.url, OSU_REDIRECT_URI || 'http://localhost');
     if (requestUrl.pathname === '/health') {
       response.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
       response.end('{"status":"ok"}');
       return;
     }
-    if (requestUrl.pathname !== new URL(OSU_REDIRECT_URI).pathname) {
+    if (apiHandler && await apiHandler(request, response)) return;
+    const redirectPath = OSU_REDIRECT_URI ? new URL(OSU_REDIRECT_URI).pathname : null;
+    if (!redirectPath || requestUrl.pathname !== redirectPath) {
       response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
       response.end('Not found');
       return;
     }
-
+    const configError = getConfigError(store);
+    if (configError) {
+      response.writeHead(503, { 'content-type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ error: configError }));
+      return;
+    }
     const state = requestUrl.searchParams.get('state');
     const code = requestUrl.searchParams.get('code');
     let pending;
@@ -204,8 +211,6 @@ function createOsuVerificationService({ bot, store }) {
   }
 
   async function startServer() {
-    const configError = getConfigError(store);
-    if (configError) throw new Error(configError);
     if (server) return;
     const candidate = http.createServer((request, response) => {
       handleCallback(request, response).catch((error) => {
@@ -222,7 +227,9 @@ function createOsuVerificationService({ bot, store }) {
       });
     });
     server = candidate;
-    console.log(`osu! verification callback listening on port ${VERIFY_PORT}`);
+    console.log(`HTTP API listening on port ${VERIFY_PORT}`);
+    const configError = getConfigError(store);
+    if (configError) console.warn(`osu! verification is disabled: ${configError}`);
   }
 
   async function begin(message, osuUserId) {
