@@ -188,11 +188,14 @@ function createOsuVerificationService({ bot, store }) {
         ? `Welcome, ${osuUser.username}. Your Discord nickname and ${result.role.name} role have been set.`
         : `Welcome, ${osuUser.username}. Your ${result.role.name} role has been set. Discord does not allow bots to change a server owner's nickname.`;
       response.end(htmlPage('Verification complete!', completionMessage, true));
-      const channel = await bot.channels.fetch(pending.channel_id);
-      if (channel?.isTextBased()) {
-        const nicknameNotice = result.nicknameUpdated ? '' : ' Their nickname was unchanged because they are the server owner.';
-        await channel.send(`✅ <@${pending.discord_user_id}> verified as **${osuUser.username}** and received the <@&${result.role.id}> role.${nicknameNotice}`);
-      }
+      const nicknameNotice = result.nicknameUpdated
+        ? 'Your Discord nickname was updated to your osu! username.'
+        : 'Your nickname was unchanged because Discord does not allow bots to edit the server owner.';
+      await bot.users.fetch(pending.discord_user_id).then((verifiedUser) => verifiedUser.send(
+        `✅ You are verified as **${osuUser.username}** and received the **${result.role.name}** role. ${nicknameNotice}`,
+      )).catch((error) => {
+        console.warn('Could not send private verification result:', error.message);
+      });
     } catch (error) {
       console.error('osu! verification callback failed:', error);
       response.writeHead(500, { 'content-type': 'text/html; charset=utf-8' });
