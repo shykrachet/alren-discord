@@ -42,7 +42,7 @@ bot.once('ready', async () => {
   }
 });
 
-bot.on('messageCreate', createMessageHandler({ bot, chat, osuVerification }));
+bot.on('messageCreate', createMessageHandler({ bot, osuVerification }));
 bot.on('interactionCreate', createInteractionHandler({ chat }));
 
 if (!DISCORD_TOKEN) throw new Error('Missing DISCORD_TOKEN in .env');
