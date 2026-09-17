@@ -1,6 +1,22 @@
 # Alren
 
-Alren is a Discord bot for private AI chat, osu! account verification, random beatmap discovery, and automatic beatmap updates.
+Alren is a Discord bot for private AI chat, osu! account verification, random beatmap discovery, automatic beatmap updates, and BN/Mappers' Guild community alerts.
+
+## Community-alert quick start
+
+Use this after the bot has its `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and Discord token configured:
+
+1. In Supabase **SQL Editor**, run [`supabase/community_alert_settings.sql`](supabase/community_alert_settings.sql).
+2. Restart Alren with `npm start` (or redeploy it on Railway). The bot registers the command when it connects.
+3. In Discord, a member with **Manage Server** runs:
+
+   ```text
+   /community-alert-settings channel:#alerts bn_mode:Standard (osu!)
+   ```
+
+4. Confirm the saved configuration privately with `/community-alert-settings`.
+
+Alren records the current public state at startup and only posts later BN openings or newly opened Mappers' Guild missions. There is no `COMMUNITY_ALERT_CHANNEL_ID` environment variable: the channel and BN mode are stored per Discord server.
 
 ## Installation
 
@@ -186,10 +202,10 @@ Alren can monitor two public community data sources:
 Run [`supabase/community_alert_settings.sql`](supabase/community_alert_settings.sql) in Supabase SQL Editor once. Then, in Discord, an administrator with **Manage Server** can configure the alert destination and BN mode:
 
 ```text
-/community-alert-settings channel:#alerts bn_mode:osu!
+/community-alert-settings channel:#alerts bn_mode:Standard (osu!)
 ```
 
-Choose `All osu! modes`, `osu!`, `osu!taiko`, `osu!catch`, or `osu!mania`. The BN mode filter applies only to BN request-opening messages; new Mappers' Guild missions are always sent to the selected channel. Run the command again with no options to view the saved setting, or provide one option to change just that value.
+Choose `Standard (osu!)`, `Taiko`, `Catch`, or `Mania` from the `bn_mode` menu. `All osu! modes` is also available when you want every BN opening. The command works directly in Discord chat; no server environment variable or terminal command is needed to change the channel or mode. The BN mode filter applies only to BN request-opening messages; new Mappers' Guild missions are always sent to the selected channel. Run the command again with no options to view the saved setting, or provide one option to change just that value.
 
 Set the optional polling interval in `.env` or Railway Variables:
 
@@ -216,6 +232,16 @@ https://your-service.up.railway.app/api/community-alerts
 ```
 
 The JSON response contains `checkedAt`, normalized `bnRequests.entries`, and recent `missions.recentOpenings`. Responses are cached for 60 seconds to avoid excessive requests to the upstream sites. The API contains only public data and does not require an osu! or Mappers' Guild login.
+
+Example response shape:
+
+```json
+{
+  "checkedAt": "2026-09-17T00:00:00.000Z",
+  "bnRequests": { "entries": [] },
+  "missions": { "recentOpenings": [] }
+}
+```
 
 ## Commands
 
@@ -261,6 +287,13 @@ Confirm that `src/osu-maps.js` exists before running `npm start` again.
 - Confirm that `SUPABASE_URL` and `SUPABASE_SECRET_KEY` are set.
 - Run the latest Supabase schema after pulling an update.
 - Keep the Supabase secret key on the server; never expose it in Discord or client-side code.
+
+### Community alerts are not posting
+
+- Run [`supabase/community_alert_settings.sql`](supabase/community_alert_settings.sql) in Supabase SQL Editor.
+- Confirm the server configuration privately with `/community-alert-settings`.
+- Give Alren **View Channel** and **Send Messages** in the selected channel.
+- Wait for a future BN opening or mission-opening event; existing public entries are intentionally not posted after a restart.
 
 ## Development
 

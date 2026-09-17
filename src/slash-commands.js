@@ -19,10 +19,10 @@ const MAP_MODE_CHOICES = [
 ];
 const BN_MODE_CHOICES = [
   { name: 'All osu! modes', value: 'all' },
-  { name: 'osu!', value: 'osu' },
-  { name: 'osu!taiko', value: 'taiko' },
-  { name: 'osu!catch', value: 'catch' },
-  { name: 'osu!mania', value: 'mania' },
+  { name: 'Standard (osu!)', value: 'osu' },
+  { name: 'Taiko', value: 'taiko' },
+  { name: 'Catch', value: 'catch' },
+  { name: 'Mania', value: 'mania' },
 ];
 
 const CHAT_COMMAND = new SlashCommandBuilder()
