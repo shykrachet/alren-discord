@@ -228,7 +228,7 @@ function createOsuVerificationService({ bot, store }) {
       return;
     }
     if (!osuUserId || !/^\d{1,20}$/.test(osuUserId)) {
-      await message.reply('Usage: `!osuverify <osu_user_id>` — for example, `!osuverify 12852613`.\nFind the ID in the profile URL, such as https://osu.ppy.sh/users/12852613');
+      await message.reply('Usage: `!osuverify <osu_user_id>` — for example, `!osuverify 66070220`.\nFind the ID in the profile URL, such as https://osu.ppy.sh/users/12852613');
       return;
     }
     const configError = getConfigError(store);

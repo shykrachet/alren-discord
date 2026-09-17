@@ -7,14 +7,14 @@ function formatHelp() {
     'Use `/alrenclear` to start a fresh private conversation in the current channel.',
     '',
     '**2. osu! verification**',
-    '• An administrator runs `!verify-role @role` once to choose the verified role.',
-    '• Run `!osuverify <osu_user_id>`, for example `!osuverify 12852613`.',
+    '• An administrator runs `/verify-role` once to choose the verified role.',
+    '• Run `/osuverify`, enter your osu! ID, and send it.',
     '• Open the personal verification link sent by DM and sign in to the same osu! account.',
     '• Alren assigns the selected role and updates your nickname when Discord permits it.',
     '',
     '**Useful commands**',
-    '`!verify-role-status` — Check the configured verification role.',
-    '`!osuverify-status` — Check your verified osu! account.',
+    '`/verify-role-status` — Check the configured verification role privately.',
+    '`/osuverify-status` — Check your verified osu! account privately.',
     '`!ping` — Check whether Alren is online.',
     '`!version` — Show the bot version.',
     '',
@@ -22,33 +22,12 @@ function formatHelp() {
   ].join('\n');
 }
 
-function createMessageHandler({ bot, osuVerification }) {
+function createMessageHandler({ bot }) {
   return async (message) => {
     if (message.author.bot) return;
 
     if (message.content.trim().toLowerCase() === '!alrenhelp') {
       await message.reply(formatHelp());
-      return;
-    }
-
-    if (message.content === '!verify-role-status') {
-      await osuVerification.showVerificationRole(message);
-      return;
-    }
-
-    if (/^!verify-role(?:\s|$)/i.test(message.content.trim())) {
-      await osuVerification.setVerificationRole(message);
-      return;
-    }
-
-    const verifyMatch = message.content.trim().match(/^!osuverify(?:\s+(.+))?$/i);
-    if (verifyMatch) {
-      await osuVerification.begin(message, verifyMatch[1]?.trim());
-      return;
-    }
-
-    if (message.content === '!osuverify-status') {
-      await osuVerification.showStatus(message);
       return;
     }
 
@@ -62,10 +41,10 @@ function createMessageHandler({ bot, osuVerification }) {
       return;
     }
 
-    const isLegacyChat = /^!chat(?:\s|$)/i.test(message.content.trim())
+    const isLegacyPrivateCommand = /^!(?:chat|reset|osuverify(?:-status)?|verify-role(?:-status)?)(?:\s|$)/i.test(message.content.trim())
       || message.content.trim() === '!reset'
       || message.mentions.users.has(bot.user.id);
-    if (isLegacyChat && message.deletable) {
+    if (isLegacyPrivateCommand && message.deletable) {
       await message.delete().catch(() => {});
     }
   };
