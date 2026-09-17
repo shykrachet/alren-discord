@@ -19,16 +19,52 @@ async function replyInChunks(message, answer) {
   }
 }
 
+function formatHelp() {
+  return [
+    '📖 **Alren Help**',
+    '',
+    '**General commands**',
+    '`!ping` — Check whether the bot is online.',
+    '`!chat <message>` or mention the bot — Chat with Alren.',
+    '`!reset` — Clear your chat memory in this channel.',
+    '`!version` — Show the bot version.',
+    '',
+    '**osu! Verify**',
+    '`!verify-role @role` — Set the role awarded after verification. Requires Manage Server.',
+    '`!verify-role-status` — Show the configured role.',
+    '`!osuverify <osu_user_id>` — Verify an osu! account, for example `!osuverify 12852613`.',
+    '`!osuverify-status` — Show your verified osu! account.',
+    '',
+    'Before verification, an administrator must set a role and place the bot role above it. Users receive a private verification link by DM.',
+  ].join('\n');
+}
+
 function createMessageHandler({ bot, chat, osuVerification }) {
   return async (message) => {
     if (message.author.bot) return;
 
-    if (message.content === '!verify') {
-      await osuVerification.begin(message);
+    if (message.content.trim().toLowerCase() === '!alrenhelp') {
+      await message.reply(formatHelp());
       return;
     }
 
-    if (message.content === '!verify-status') {
+    if (message.content === '!verify-role-status') {
+      await osuVerification.showVerificationRole(message);
+      return;
+    }
+
+    if (/^!verify-role(?:\s|$)/i.test(message.content.trim())) {
+      await osuVerification.setVerificationRole(message);
+      return;
+    }
+
+    const verifyMatch = message.content.trim().match(/^!osuverify(?:\s+(.+))?$/i);
+    if (verifyMatch) {
+      await osuVerification.begin(message, verifyMatch[1]?.trim());
+      return;
+    }
+
+    if (message.content === '!osuverify-status') {
       await osuVerification.showStatus(message);
       return;
     }
@@ -45,7 +81,7 @@ function createMessageHandler({ bot, chat, osuVerification }) {
 
     if (message.content === '!reset') {
       chat?.clearMemory(message.channel.id, message.author.id);
-      await message.reply('ล้างความจำของห้องนี้แล้ว เริ่มคุยใหม่ได้เลย 🙂');
+      await message.reply('Your chat memory in this channel has been cleared. You can start a new conversation now. 🙂');
       return;
     }
 
@@ -53,12 +89,12 @@ function createMessageHandler({ bot, chat, osuVerification }) {
     if (prompt === null) return;
 
     if (!prompt) {
-      await message.reply('แท็กฉันแล้วพิมพ์เรื่องที่อยากคุยได้เลย หรือใช้ `!chat ข้อความ` 🙂');
+      await message.reply('Mention me with a message, or use `!chat <message>`. 🙂');
       return;
     }
 
     if (!chat) {
-      await message.reply('ยังไม่ได้ตั้งค่า OpenAI API key ให้ฉันเลย ลองดู `.env.example` นะ');
+      await message.reply('OpenAI is not configured yet. Add an API key to the environment variables.');
       return;
     }
 
@@ -73,10 +109,10 @@ function createMessageHandler({ bot, chat, osuVerification }) {
       await replyInChunks(message, answer);
     } catch (error) {
       console.error('Chat request failed:', error.message);
-      await message.reply('ตอนนี้ฉันคุยไม่ได้ชั่วคราว ลองใหม่อีกครั้งในสักครู่นะ');
+      await message.reply('I cannot respond right now. Please try again shortly.');
     }
   };
 }
 
-module.exports = { createMessageHandler };
+module.exports = { createMessageHandler, formatHelp };
 const { formatVersion } = require('./version');

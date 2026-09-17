@@ -31,7 +31,7 @@ function createChatService(openai) {
       max_tokens: 300,
     });
     const answer = completion.choices[0]?.message?.content?.trim()
-      || 'อัลเรนขอโทษด้วย เรนยังไม่เคยเจอคำประโยคแบบนี้มาก่อน เรนไม่รู้จะตอบอะไรดีเลย...';
+      || 'Sorry, I do not have a response for that yet.';
 
     memories.set(memoryKey, [
       ...memory,

@@ -12,4 +12,7 @@ module.exports = {
   OSU_REDIRECT_URI: process.env.OSU_REDIRECT_URI,
   // Railway supplies PORT at runtime; VERIFY_PORT remains useful for local development.
   VERIFY_PORT: Number(process.env.PORT || process.env.VERIFY_PORT || 3000),
+  SUPABASE_URL: process.env.SUPABASE_URL,
+  // SUPABASE_SECRET_KEY is the current Supabase server-only key name.
+  SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY,
 };
