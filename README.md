@@ -2,8 +2,6 @@
 
 A Discord bot that chats like a friend through `!chat` or bot mentions. It keeps a short conversation history separately for each user and channel.
 
-> Current version: `0.1.0-beta.1`
-
 ## Install from scratch
 
 ### 1. Install prerequisites
