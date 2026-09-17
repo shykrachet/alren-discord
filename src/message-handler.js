@@ -1,45 +1,28 @@
-function getChatPrompt(message, bot) {
-  const command = '!chat';
-  const isChatCommand = message.content.toLowerCase().startsWith(command);
-  const isMentioned = message.mentions.users.has(bot.user.id);
-
-  if (!isChatCommand && !isMentioned) return null;
-
-  return isChatCommand
-    ? message.content.slice(command.length).trim()
-    : message.content.replace(new RegExp(`<@!?${bot.user.id}>`, 'g'), '').trim();
-}
-
-async function replyInChunks(message, answer) {
-  const chunks = answer.match(/[\s\S]{1,1900}/g) || [];
-
-  for (const [index, part] of chunks.entries()) {
-    if (index === 0) await message.reply(part);
-    else await message.channel.send(part);
-  }
-}
-
 function formatHelp() {
   return [
-    '📖 **Alren Help**',
+    '📖 **Alren User Guide**',
     '',
-    '**General commands**',
-    '`!ping` — Check whether the bot is online.',
-    '`!chat <message>` or mention the bot — Chat with Alren.',
-    '`!reset` — Clear your chat memory in this channel.',
+    '**1. Private chat**',
+    'Use `/alren`, enter your message, and send it. Only you can see Alren’s reply. It deletes automatically after 5 minutes.',
+    'Use `/alrenclear` to start a fresh private conversation in the current channel.',
+    '',
+    '**2. osu! verification**',
+    '• An administrator runs `!verify-role @role` once to choose the verified role.',
+    '• Run `!osuverify <osu_user_id>`, for example `!osuverify 12852613`.',
+    '• Open the personal verification link sent by DM and sign in to the same osu! account.',
+    '• Alren assigns the selected role and updates your nickname when Discord permits it.',
+    '',
+    '**Useful commands**',
+    '`!verify-role-status` — Check the configured verification role.',
+    '`!osuverify-status` — Check your verified osu! account.',
+    '`!ping` — Check whether Alren is online.',
     '`!version` — Show the bot version.',
     '',
-    '**osu! Verify**',
-    '`!verify-role @role` — Set the role awarded after verification. Requires Manage Server.',
-    '`!verify-role-status` — Show the configured role.',
-    '`!osuverify <osu_user_id>` — Verify an osu! account, for example `!osuverify 12852613`.',
-    '`!osuverify-status` — Show your verified osu! account.',
-    '',
-    'Before verification, an administrator must set a role and place the bot role above it. Users receive a private verification link by DM.',
+    'Use `/alrenhelp` to view this guide privately. Server owners can verify and receive a role, but Discord does not allow bots to change the owner’s nickname.',
   ].join('\n');
 }
 
-function createMessageHandler({ bot, chat, osuVerification }) {
+function createMessageHandler({ bot, osuVerification }) {
   return async (message) => {
     if (message.author.bot) return;
 
@@ -79,37 +62,11 @@ function createMessageHandler({ bot, chat, osuVerification }) {
       return;
     }
 
-    if (message.content === '!reset') {
-      chat?.clearMemory(message.channel.id, message.author.id);
-      await message.reply('Your chat memory in this channel has been cleared. You can start a new conversation now. 🙂');
-      return;
-    }
-
-    const prompt = getChatPrompt(message, bot);
-    if (prompt === null) return;
-
-    if (!prompt) {
-      await message.reply('Mention me with a message, or use `!chat <message>`. 🙂');
-      return;
-    }
-
-    if (!chat) {
-      await message.reply('OpenAI is not configured yet. Add an API key to the environment variables.');
-      return;
-    }
-
-    try {
-      await message.channel.sendTyping();
-      const answer = await chat.reply({
-        channelId: message.channel.id,
-        userId: message.author.id,
-        displayName: message.author.displayName,
-        prompt,
-      });
-      await replyInChunks(message, answer);
-    } catch (error) {
-      console.error('Chat request failed:', error.message);
-      await message.reply('I cannot respond right now. Please try again shortly.');
+    const isLegacyChat = /^!chat(?:\s|$)/i.test(message.content.trim())
+      || message.content.trim() === '!reset'
+      || message.mentions.users.has(bot.user.id);
+    if (isLegacyChat && message.deletable) {
+      await message.delete().catch(() => {});
     }
   };
 }
