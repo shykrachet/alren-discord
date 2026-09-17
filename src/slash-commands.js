@@ -1,7 +1,22 @@
 const {
-  MessageFlags, REST, Routes, SlashCommandBuilder,
+  MessageFlags, PermissionsBitField, REST, Routes, SlashCommandBuilder,
 } = require('discord.js');
 const { formatHelp } = require('./message-handler');
+const { createMapEmbed } = require('./osu-maps');
+
+const MAP_STATUS_CHOICES = [
+  { name: 'Ranked', value: 'ranked' },
+  { name: 'Qualified', value: 'qualified' },
+  { name: 'Loved', value: 'loved' },
+  { name: 'All statuses', value: 'all' },
+];
+const MAP_MODE_CHOICES = [
+  { name: 'Any mode', value: 'any' },
+  { name: 'osu!', value: 'osu' },
+  { name: 'osu!taiko', value: 'taiko' },
+  { name: 'osu!catch', value: 'catch' },
+  { name: 'osu!mania', value: 'mania' },
+];
 
 const CHAT_COMMAND = new SlashCommandBuilder()
   .setName('alren')
@@ -43,6 +58,30 @@ const VERIFY_ROLE_STATUS_COMMAND = new SlashCommandBuilder()
   .setName('verify-role-status')
   .setDescription('Show the configured verification role privately.');
 
+const OSU_MAP_COMMAND = new SlashCommandBuilder()
+  .setName('osumap')
+  .setDescription('Post a random osu! beatmap in this channel.')
+  .addStringOption((option) => option
+    .setName('status')
+    .setDescription('Temporarily choose a beatmap status')
+    .addChoices(...MAP_STATUS_CHOICES))
+  .addStringOption((option) => option
+    .setName('mode')
+    .setDescription('Temporarily choose a game mode')
+    .addChoices(...MAP_MODE_CHOICES));
+
+const OSU_MAP_SETTINGS_COMMAND = new SlashCommandBuilder()
+  .setName('osumap-settings')
+  .setDescription('Configure the osu! beatmap feed for this server privately.')
+  .addStringOption((option) => option
+    .setName('status')
+    .setDescription('Default beatmap status')
+    .addChoices(...MAP_STATUS_CHOICES))
+  .addStringOption((option) => option
+    .setName('mode')
+    .setDescription('Default game mode')
+    .addChoices(...MAP_MODE_CHOICES));
+
 const COMMANDS = [
   CHAT_COMMAND.toJSON(),
   CLEAR_CHAT_COMMAND.toJSON(),
@@ -51,6 +90,8 @@ const COMMANDS = [
   OSU_VERIFY_STATUS_COMMAND.toJSON(),
   VERIFY_ROLE_COMMAND.toJSON(),
   VERIFY_ROLE_STATUS_COMMAND.toJSON(),
+  OSU_MAP_COMMAND.toJSON(),
+  OSU_MAP_SETTINGS_COMMAND.toJSON(),
 ];
 const DEFAULT_DELETE_AFTER_SECONDS = 300;
 
@@ -82,6 +123,12 @@ function createPrivateCommandContext(interaction) {
   };
 }
 
+function describeFilters({ mode, status }) {
+  const modeName = MAP_MODE_CHOICES.find((choice) => choice.value === mode)?.name ?? 'Any mode';
+  const statusName = MAP_STATUS_CHOICES.find((choice) => choice.value === status)?.name ?? 'Ranked';
+  return `${statusName} · ${modeName}`;
+}
+
 async function registerSlashCommands({ client, token }) {
   if (!client.user || !token) return;
 
@@ -94,9 +141,74 @@ async function registerSlashCommands({ client, token }) {
   console.log(`registered /alren in ${guilds.length} server(s)`);
 }
 
-function createInteractionHandler({ chat, osuVerification }) {
+function createInteractionHandler({ chat, osuMaps, osuVerification }) {
   return async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
+
+    if (interaction.commandName === 'osumap-settings') {
+      if (!interaction.inGuild()) {
+        await interaction.reply({
+          content: 'This command can only be used in a server.',
+          flags: MessageFlags.Ephemeral,
+        });
+        scheduleReplyDeletion(interaction);
+        return;
+      }
+      if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageGuild)) {
+        await interaction.reply({
+          content: 'You need the Manage Server permission to change beatmap feed settings.',
+          flags: MessageFlags.Ephemeral,
+        });
+        scheduleReplyDeletion(interaction);
+        return;
+      }
+
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      try {
+        const status = interaction.options.getString('status') ?? undefined;
+        const mode = interaction.options.getString('mode') ?? undefined;
+        const settings = await osuMaps.configureFeed({
+          channelId: interaction.channelId,
+          guildId: interaction.guildId,
+          mode,
+          status,
+        });
+        await interaction.editReply(`Automatic beatmap feed enabled in <#${interaction.channelId}>: **${describeFilters(settings)}**. New maps will be posted here on the next check (up to 15 minutes by default).`);
+      } catch (error) {
+        console.error('Beatmap settings failed:', error.message);
+        await interaction.editReply('I could not save the beatmap feed settings. Please check Supabase and try again.');
+      }
+      scheduleReplyDeletion(interaction);
+      return;
+    }
+
+    if (interaction.commandName === 'osumap') {
+      if (!interaction.inGuild()) {
+        await interaction.reply({
+          content: 'This command can only be used in a server.',
+          flags: MessageFlags.Ephemeral,
+        });
+        scheduleReplyDeletion(interaction);
+        return;
+      }
+
+      await interaction.deferReply();
+      try {
+        const result = await osuMaps.getRandomMap({
+          guildId: interaction.guildId,
+          mode: interaction.options.getString('mode') ?? undefined,
+          status: interaction.options.getString('status') ?? undefined,
+        });
+        await interaction.editReply({
+          content: `🎵 **${describeFilters(result.filters)}**`,
+          embeds: [createMapEmbed(result.map)],
+        });
+      } catch (error) {
+        console.error('Beatmap request failed:', error.message);
+        await interaction.editReply('I could not fetch an osu! beatmap right now. Please try again shortly.');
+      }
+      return;
+    }
 
     if (interaction.commandName === 'alrenhelp') {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });

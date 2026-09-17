@@ -111,7 +111,7 @@ Public chat through `!chat`, bot mentions, and `!reset` is disabled.
 Choose the Discord role members receive after a successful verification:
 
 ```text
-!verify-role @role
+/verify-role role:@role
 ```
 
 The Alren role must be above the selected role in **Server Settings → Roles**.
@@ -123,16 +123,38 @@ The Alren role must be above the selected role in **Server Settings → Roles**.
 3. Run the command in the Discord server:
 
 ```text
-!osuverify [your-id-osu]
+/osuverify osu_user_id:[your-id-osu]
 ```
 
 4. Alren sends a personal verification link by DM.
 5. Open the link and sign in to the same osu! account.
-6. Alren gives the configured role and updates your Discord nickname to your osu! username when Discord allows it.
+6. Alren gives the configured role, updates your Discord nickname to your osu! username when Discord allows it, and sends the result by DM. Nothing is posted in the server channel.
 
 The verification link lasts for 10 minutes and can only verify the osu! ID entered in the command.
 
 > Discord does not allow bots to change a Server Owner’s nickname. The Server Owner can still verify and receive the configured role.
+
+## osu! beatmap feed
+
+`/osumap` posts a random beatmap publicly in the channel. Each post shows the song title, artist, mapper, Ranked/Qualified/Loved status, available game modes, nominators, cover image, and an osu! link.
+
+Server administrators run `/osumap-settings` in the channel that should receive automatic updates. It saves the default filter and enables the feed privately:
+
+```text
+/osumap-settings status:all mode:any
+```
+
+Choose `ranked`, `qualified`, `loved`, or `all` for the status, and choose `any`, `osu!`, `osu!taiko`, `osu!catch`, or `osu!mania` for the mode. With `status:all`, each `/osumap` chooses a random status from Ranked, Qualified, and Loved.
+
+Alren checks osu! every 15 minutes and posts a newly updated map only once in the configured channel. The first setup records the current newest map without posting old maps. Set `OSU_MAP_FEED_INTERVAL_MINUTES` in Railway Variables to adjust the interval from 5 to 60 minutes.
+
+Anyone can temporarily override the saved filters when posting a map:
+
+```text
+/osumap status:qualified mode:mania
+```
+
+After updating the bot, run [supabase/schema.sql](supabase/schema.sql) again in Supabase SQL Editor to create the `osu_map_settings` table. It is safe to run more than once.
 
 ## Commands
 
@@ -144,7 +166,10 @@ The verification link lasts for 10 minutes and can only verify the osu! ID enter
 | `!alrenhelp` | Show this guide in the channel. |
 | `!ping` | Check whether Alren is online. |
 | `!version` or `!ver` | Show the bot version. |
-| `!verify-role @role` | Set the role awarded after osu! verification. Requires Manage Server. |
-| `!verify-role-status` | Show the configured verification role. |
-| `!osuverify osu_user_id` | Send a private osu! OAuth verification link. |
-| `!osuverify-status` | Show the linked osu! account in this server. |
+| `/verify-role role:@role` | Set the role awarded after osu! verification privately. Requires Manage Server. |
+| `/verify-role-status` | Show the configured verification role privately. |
+| `/osuverify osu_user_id` | Send a private osu! OAuth verification link. |
+| `/osuverify-status` | Show the linked osu! account in this server privately. |
+| `/osumap` | Post a random beatmap publicly using this server’s saved filters. |
+| `/osumap status mode` | Post a map with a temporary status and/or mode filter. |
+| `/osumap-settings status mode` | Set the current channel as the automatic beatmap feed and choose filters privately. Requires Manage Server. |

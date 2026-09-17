@@ -7,6 +7,7 @@ const {
 } = require('./src/config');
 const { createChatService } = require('./src/chat');
 const { createMessageHandler } = require('./src/message-handler');
+const { createMapEmbed, createOsuMapService } = require('./src/osu-maps');
 const { createOsuVerificationService } = require('./src/osu-verification');
 const { createInteractionHandler, registerSlashCommands } = require('./src/slash-commands');
 const { createSupabaseStore } = require('./src/supabase-store');
@@ -25,6 +26,7 @@ const openai = OPENAI_API_KEY
   : null;
 const chat = openai ? createChatService(openai) : null;
 const verificationStore = createSupabaseStore({ url: SUPABASE_URL, secretKey: SUPABASE_SECRET_KEY });
+const osuMaps = createOsuMapService({ store: verificationStore });
 const osuVerification = createOsuVerificationService({ bot, store: verificationStore });
 
 bot.once('clientReady', async () => {
@@ -40,10 +42,20 @@ bot.once('clientReady', async () => {
   } catch (error) {
     console.error('osu! verification is disabled:', error.message);
   }
+  osuMaps.startFeed(async ({ map, settings }) => {
+    const channel = await bot.channels.fetch(settings.channelId);
+    if (!channel?.isTextBased() || typeof channel.send !== 'function') {
+      throw new Error(`Configured beatmap channel ${settings.channelId} is unavailable.`);
+    }
+    await channel.send({
+      content: '🆕 **New osu! beatmap**',
+      embeds: [createMapEmbed(map)],
+    });
+  });
 });
 
 bot.on('messageCreate', createMessageHandler({ bot }));
-const handleInteraction = createInteractionHandler({ chat, osuVerification });
+const handleInteraction = createInteractionHandler({ chat, osuMaps, osuVerification });
 bot.on('interactionCreate', (interaction) => {
   handleInteraction(interaction).catch((error) => {
     console.error('Interaction handler failed:', error.message);
