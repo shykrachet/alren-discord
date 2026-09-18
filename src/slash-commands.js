@@ -153,16 +153,32 @@ function describeBnMode(mode) {
   return BN_MODE_CHOICES.find((choice) => choice.value === mode)?.name ?? 'All osu! modes';
 }
 
-async function registerSlashCommands({ client, token }) {
-  if (!client.user || !token) return;
+async function registerSlashCommands({ client, token, rest: providedRest }) {
+  if (!client.user || (!token && !providedRest)) return;
 
-  const rest = new REST({ version: '10' }).setToken(token);
-  const guilds = [...client.guilds.cache.values()];
-  await Promise.all(guilds.map((guild) => rest.put(
-    Routes.applicationGuildCommands(client.user.id, guild.id),
+  const rest = providedRest ?? new REST({ version: '10' }).setToken(token);
+  const applicationId = client.application?.id || client.user.id;
+
+  // Global commands automatically become available in every server where the
+  // app is installed, including servers that add the bot after it starts.
+  await rest.put(
+    Routes.applicationCommands(applicationId),
     { body: COMMANDS },
+  );
+
+  // Older releases registered the same commands per guild. Remove those
+  // legacy copies so Discord does not keep serving stale guild overrides.
+  const guilds = [...client.guilds.cache.values()];
+  const cleanupResults = await Promise.allSettled(guilds.map((guild) => rest.put(
+    Routes.applicationGuildCommands(applicationId, guild.id),
+    { body: [] },
   )));
-  console.log(`registered /alren in ${guilds.length} server(s)`);
+  const cleanupFailures = cleanupResults.filter((result) => result.status === 'rejected');
+  if (cleanupFailures.length) {
+    console.warn(`Could not clear legacy slash commands in ${cleanupFailures.length} server(s).`);
+  }
+
+  console.log(`registered ${COMMANDS.length} global slash command(s) for ${guilds.length} server(s)`);
 }
 
 function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
