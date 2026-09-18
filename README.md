@@ -59,16 +59,19 @@ Open the [Discord Developer Portal](https://discord.com/developers/applications)
 
 1. Copy the bot token to `DISCORD_TOKEN`. Keep it private.
 2. Enable **Message Content Intent** and **Server Members Intent** under **Privileged Gateway Intents**.
-3. Open **OAuth2 → URL Generator**.
-4. Select the `bot` and `applications.commands` scopes.
-5. Select these bot permissions:
+3. Enable **Public Bot** if server owners other than the application owner should be able to install it.
+4. Open **OAuth2 → URL Generator**.
+5. Select the `bot` and `applications.commands` scopes.
+6. Select these bot permissions:
    - View Channels
    - Send Messages
    - Read Message History
    - Manage Roles
    - Manage Nicknames
    - Manage Messages
-6. Open the generated URL and add the bot to your server.
+7. Open the generated URL and add the bot to your server.
+
+Slash commands are registered globally when Alren starts. The same commands therefore become available in every server that installs the bot, including servers added later without restarting Alren. Discord may take a few minutes to show newly registered global commands.
 
 ### 4. Configure AI chat
 
