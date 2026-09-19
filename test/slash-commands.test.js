@@ -27,7 +27,7 @@ test('registers global commands and removes legacy guild commands', async () => 
   assert.equal(calls[0].route, '/applications/application-id/commands');
   assert.ok(calls[0].options.body.length > 0);
   assert.ok(calls[0].options.body.some((command) => command.name === 'ping'));
-  assert.ok(calls[0].options.body.some((command) => command.name === 'version'));
+  assert.equal(calls[0].options.body.some((command) => command.name === 'version'), false);
   assert.ok(calls[0].options.body.some((command) => command.name === 'help'));
   assert.ok(calls[0].options.body.some((command) => command.name === 'map'));
   assert.ok(calls[0].options.body.some((command) => command.name === 'setup'));

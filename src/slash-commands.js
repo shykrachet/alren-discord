@@ -8,7 +8,6 @@ const {
   createHelpLanguagePrompt,
 } = require('./message-handler');
 const { createMapEmbed } = require('./osu-maps');
-const { formatVersion } = require('./version');
 
 const MAP_STATUS_CHOICES = [
   { name: 'Ranked', value: 'ranked' },
@@ -58,10 +57,6 @@ const HELP_COMMAND = new SlashCommandBuilder()
 const PING_COMMAND = new SlashCommandBuilder()
   .setName('ping')
   .setDescription('Check whether Alren is online.');
-
-const VERSION_COMMAND = new SlashCommandBuilder()
-  .setName('version')
-  .setDescription('Show the current Alren version.');
 
 const QUICK_HELP_COMMAND = new SlashCommandBuilder()
   .setName('help')
@@ -183,7 +178,6 @@ const COMMANDS = [
   CLEAR_CHAT_COMMAND.toJSON(),
   HELP_COMMAND.toJSON(),
   PING_COMMAND.toJSON(),
-  VERSION_COMMAND.toJSON(),
   QUICK_HELP_COMMAND.toJSON(),
   OSU_VERIFY_COMMAND.toJSON(),
   OSU_VERIFY_STATUS_COMMAND.toJSON(),
@@ -305,12 +299,6 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
         content: `🏓 Pong — **${interaction.client.ws.ping}ms**`,
         flags: MessageFlags.Ephemeral,
       });
-      scheduleReplyDeletion(interaction);
-      return;
-    }
-
-    if (interaction.commandName === 'version') {
-      await interaction.reply({ content: formatVersion(), flags: MessageFlags.Ephemeral });
       scheduleReplyDeletion(interaction);
       return;
     }
