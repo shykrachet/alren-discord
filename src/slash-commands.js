@@ -16,18 +16,18 @@ const MAP_STATUS_CHOICES = [
   { name: 'All statuses', value: 'all' },
 ];
 const MAP_MODE_CHOICES = [
-  { name: 'Any mode', value: 'any' },
-  { name: 'osu!', value: 'osu' },
-  { name: 'osu!taiko', value: 'taiko' },
-  { name: 'osu!catch', value: 'catch' },
-  { name: 'osu!mania', value: 'mania' },
+  { name: '🌐 Any mode', value: 'any' },
+  { name: '🎯 osu!', value: 'osu' },
+  { name: '🥁 osu!taiko', value: 'taiko' },
+  { name: '🍎 osu!catch / fruits', value: 'catch' },
+  { name: '🎹 osu!mania', value: 'mania' },
 ];
 const BN_MODE_CHOICES = [
-  { name: 'All osu! modes', value: 'all' },
-  { name: 'Standard (osu!)', value: 'osu' },
-  { name: 'Taiko', value: 'taiko' },
-  { name: 'Catch', value: 'catch' },
-  { name: 'Mania', value: 'mania' },
+  { name: '🌐 All osu! modes', value: 'all' },
+  { name: '🎯 Standard (osu!)', value: 'osu' },
+  { name: '🥁 Taiko', value: 'taiko' },
+  { name: '🍎 Catch / fruits', value: 'catch' },
+  { name: '🎹 Mania', value: 'mania' },
 ];
 const HELP_LANGUAGE_CHOICES = [
   { name: 'ไทย (TH)', value: 'th' },
@@ -223,13 +223,13 @@ function createPrivateCommandContext(interaction) {
 }
 
 function describeFilters({ mode, status }) {
-  const modeName = MAP_MODE_CHOICES.find((choice) => choice.value === mode)?.name ?? 'Any mode';
+  const modeName = MAP_MODE_CHOICES.find((choice) => choice.value === mode)?.name ?? '🌐 Any mode';
   const statusName = MAP_STATUS_CHOICES.find((choice) => choice.value === status)?.name ?? 'Ranked';
   return `${statusName} · ${modeName}`;
 }
 
 function describeBnMode(mode) {
-  return BN_MODE_CHOICES.find((choice) => choice.value === mode)?.name ?? 'All osu! modes';
+  return BN_MODE_CHOICES.find((choice) => choice.value === mode)?.name ?? '🌐 All osu! modes';
 }
 
 function createSetupEmbed({ alerts, map, roleId, updated }) {

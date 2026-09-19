@@ -1,4 +1,5 @@
 const { EmbedBuilder } = require('discord.js');
+const { modeLabel } = require('./mode-icons');
 
 const BN_SOURCE_URL = 'https://bn.mappersguild.com/api/relevantInfo';
 const MISSION_LOG_SOURCE_URL = 'https://mappersguild.com/api/logs/query';
@@ -8,7 +9,7 @@ const DEFAULT_CACHE_MS = 60 * 1000;
 const DEFAULT_INTERVAL_MINUTES = 5;
 
 const MODE_NAMES = {
-  all: 'All modes',
+  all: '🌐 All modes',
   osu: 'osu!',
   taiko: 'osu!taiko',
   catch: 'osu!catch',
@@ -71,7 +72,7 @@ function relativeDiscordTime(value) {
 
 function shouldDeliverCommunityAlert(alert, settings) {
   if (!settings?.channel_id) return false;
-  if (alert.type !== 'bn-open') return alert.type === 'mission-open';
+  if (!['bn-open', 'bn-closed'].includes(alert.type)) return alert.type === 'mission-open';
   const filter = normalizeBnMode(settings.bn_mode_filter || 'all');
   return filter === 'all' || filter === alert.entry.mode;
 }
@@ -146,8 +147,8 @@ function normalizeMissionOpenings(data) {
   });
 }
 
-function createBnRequestEmbed(entry) {
-  const modeName = MODE_NAMES[entry.mode] || entry.mode;
+function createBnStatusEmbed(entry, isOpen) {
+  const modeName = modeLabel(entry.mode);
   const methods = entry.requestMethods
     .map((method) => REQUEST_METHOD_NAMES[method] || method)
     .join(', ') || 'See profile';
@@ -157,16 +158,18 @@ function createBnRequestEmbed(entry) {
   const roleName = BN_ROLE_NAMES[entry.group] || 'BN/NAT member';
   const level = entry.level ? ` • ${titleCase(entry.level)}` : '';
   const embed = new EmbedBuilder()
-    .setColor(0x22c55e)
+    .setColor(isOpen ? 0x22c55e : 0xef4444)
     .setAuthor({
       name: `${entry.username} • ${roleName}${level}`,
       ...(entry.avatarUrl ? { iconURL: entry.avatarUrl } : {}),
     })
-    .setTitle('🟢 Beatmap requests are open')
+    .setTitle(isOpen ? '🟢 Beatmap requests are open' : '🔴 Beatmap requests are closed')
     .setURL(bnUrl.toString())
-    .setDescription(`**[${entry.username}](${profileUrl})** is accepting **${modeName}** requests now.`)
+    .setDescription(isOpen
+      ? `**[${entry.username}](${profileUrl})** is accepting **${modeName}** requests now.`
+      : `**[${entry.username}](${profileUrl})** is no longer accepting **${modeName}** requests.`)
     .addFields(
-      { name: '🟢 Status', value: '**Open**', inline: true },
+      { name: isOpen ? '🟢 Status' : '🔴 Status', value: isOpen ? '**Open**' : '**Closed**', inline: true },
       { name: '🕒 Last opened', value: relativeDiscordTime(entry.lastOpenedAt), inline: true },
       { name: '📨 Request methods', value: methods, inline: true },
       { name: '🗣️ Languages', value: entry.languages?.join(', ') || 'Not listed', inline: true },
@@ -187,8 +190,16 @@ function createBnRequestEmbed(entry) {
   if (entry.coverUrl) embed.setImage(entry.coverUrl);
   if (entry.avatarUrl) embed.setThumbnail(entry.avatarUrl);
   const openedAt = Date.parse(entry.lastOpenedAt || '');
-  embed.setTimestamp(Number.isNaN(openedAt) ? new Date() : new Date(openedAt));
+  embed.setTimestamp(isOpen && !Number.isNaN(openedAt) ? new Date(openedAt) : new Date());
   return embed;
+}
+
+function createBnRequestEmbed(entry) {
+  return createBnStatusEmbed(entry, true);
+}
+
+function createBnClosedEmbed(entry) {
+  return createBnStatusEmbed(entry, false);
 }
 
 function createMissionEmbed(mission) {
@@ -271,8 +282,11 @@ function createCommunityAlertsService({
       const nextStates = new Map(snapshot.bnRequests.entries.map((entry) => [entry.key, entry.status]));
       if (bnStates && typeof sendAlert === 'function') {
         for (const entry of snapshot.bnRequests.entries) {
-          if (entry.status === 'open' && bnStates.get(entry.key) !== 'open') {
+          const previousStatus = bnStates.get(entry.key);
+          if (entry.status === 'open' && previousStatus !== 'open') {
             await sendAlert({ type: 'bn-open', entry });
+          } else if (entry.status === 'closed' && previousStatus === 'open') {
+            await sendAlert({ type: 'bn-closed', entry });
           }
         }
       }
@@ -357,6 +371,7 @@ function createCommunityAlertsService({
 }
 
 module.exports = {
+  createBnClosedEmbed,
   createBnRequestEmbed,
   createCommunityAlertsService,
   createMissionEmbed,
