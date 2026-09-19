@@ -10,8 +10,15 @@ function map(id, status = 'ranked') {
     creator: 'Mapper',
     status,
     ranked_date: '2026-09-17T00:00:00Z',
-    beatmaps: [{ mode: 'osu' }, { mode: 'mania' }],
-    covers: { cover: 'https://example.com/cover.jpg' },
+    beatmaps: [
+      { difficulty_rating: 2.5, mode: 'osu', total_length: 125 },
+      { difficulty_rating: 5.75, mode: 'mania', total_length: 180 },
+    ],
+    bpm: 180,
+    covers: {
+      cover: 'https://example.com/cover.jpg',
+      list: 'https://example.com/list.jpg',
+    },
     current_nominations: [{ user_id: 42 }],
     related_users: [{ id: 42, username: 'Nominator' }],
   };
@@ -37,9 +44,11 @@ test('createMapEmbed presents the beatmap metadata', () => {
   const embed = createMapEmbed(map(123)).toJSON();
   assert.equal(embed.title, 'Artist — Title');
   assert.equal(embed.url, 'https://osu.ppy.sh/beatmapsets/123');
-  assert.equal(embed.fields.find((field) => field.name === 'Modes').value, 'osu!, osu!mania');
-  assert.equal(embed.fields.find((field) => field.name === 'Nominators').value, 'Nominator');
+  assert.equal(embed.fields.find((field) => field.name.includes('Modes')).value, 'osu!, osu!mania');
+  assert.equal(embed.fields.find((field) => field.name.includes('Difficulties')).value, '2.50★ – 5.75★ • 2 difficulties');
+  assert.equal(embed.fields.find((field) => field.name.includes('Nominators')).value, 'Nominator');
   assert.equal(embed.image.url, 'https://example.com/cover.jpg');
+  assert.equal(embed.thumbnail.url, 'https://example.com/list.jpg');
 });
 
 test('getRandomMap uses stored filters and authenticates with osu!', async () => {

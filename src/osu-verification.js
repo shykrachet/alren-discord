@@ -1,6 +1,8 @@
 const crypto = require('node:crypto');
 const http = require('node:http');
-const { PermissionsBitField } = require('discord.js');
+const {
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, PermissionsBitField,
+} = require('discord.js');
 const {
   OSU_CLIENT_ID,
   OSU_CLIENT_SECRET,
@@ -9,6 +11,54 @@ const {
 } = require('./config');
 
 const STATE_TTL_MS = 10 * 60 * 1000;
+
+function osuProfileUrl(user) {
+  return user?.id ? `https://osu.ppy.sh/users/${encodeURIComponent(user.id)}` : null;
+}
+
+function osuCoverUrl(user) {
+  return user?.cover_url || user?.cover?.custom_url || user?.cover?.url || null;
+}
+
+function addProfileArtwork(embed, user, fallbackAvatarUrl) {
+  const avatar = user?.avatar_url || (user?.id ? `https://a.ppy.sh/${encodeURIComponent(user.id)}` : null);
+  const cover = osuCoverUrl(user);
+  if (avatar || fallbackAvatarUrl) embed.setThumbnail(avatar || fallbackAvatarUrl);
+  if (cover) embed.setImage(cover);
+  return embed;
+}
+
+function createVerificationMessage({ authorizationUrl, botAvatarUrl, guildName, osuProfile, welcome = false }) {
+  const identity = osuProfile
+    ? `This link is prepared for **${osuProfile.username}** (osu! ID ${osuProfile.id}).`
+    : 'Sign in to osu! and Alren will detect your account name automatically.';
+  const embed = new EmbedBuilder()
+    .setColor(0xff66aa)
+    .setAuthor({
+      name: 'Alren • Secure osu! verification',
+      ...(botAvatarUrl ? { iconURL: botAvatarUrl } : {}),
+    })
+    .setTitle(welcome ? `👋 Welcome to ${guildName}` : '✅ Verify your osu! account')
+    .setDescription(`${identity}\n\nClick the button below to continue securely through osu! OAuth.`)
+    .addFields(
+      { name: 'What happens next?', value: 'Alren reads your public osu! profile, gives you the configured role, and updates your Discord nickname when allowed.' },
+      { name: 'Link lifetime', value: '10 minutes', inline: true },
+      { name: 'Privacy', value: 'Sent only to you', inline: true },
+    )
+    .setFooter({ text: 'Alren verification • Never share this personal link' })
+    .setTimestamp();
+  const profileUrl = osuProfileUrl(osuProfile);
+  if (profileUrl) embed.setURL(profileUrl);
+  addProfileArtwork(embed, osuProfile, botAvatarUrl);
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setLabel('Verify with osu!')
+      .setEmoji('✅')
+      .setStyle(ButtonStyle.Link)
+      .setURL(authorizationUrl),
+  );
+  return { embeds: [embed], components: [row] };
+}
 
 function getConfigError(store) {
   if (!OSU_CLIENT_ID || !OSU_CLIENT_SECRET || !OSU_REDIRECT_URI) {
@@ -23,8 +73,9 @@ function htmlPage(title, message, success = false) {
   const escapedTitle = escapeHtml(title);
   const escapedMessage = escapeHtml(message);
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${escapedTitle}</title>`
-    + `<style>body{font-family:system-ui,sans-serif;background:#171923;color:#fff;display:grid;place-items:center;min-height:90vh;margin:0}.card{max-width:480px;padding:32px;border-radius:16px;background:#24283b;text-align:center}h1{color:${color}}</style>`
-    + `</head><body><main class="card"><h1>${escapedTitle}</h1><p>${escapedMessage}</p><p>You can return to Discord now.</p></main></body></html>`;
+    + `<meta name="viewport" content="width=device-width,initial-scale=1">`
+    + `<style>*{box-sizing:border-box}body{font-family:Inter,ui-sans-serif,system-ui,sans-serif;background:radial-gradient(circle at top,#4c1d5f,#111827 55%);color:#fff;display:grid;place-items:center;min-height:100vh;margin:0;padding:24px}.card{width:min(520px,100%);padding:40px;border:1px solid #ffffff20;border-radius:24px;background:#171923e8;box-shadow:0 24px 70px #0008;text-align:center}.mark{display:grid;place-items:center;width:64px;height:64px;margin:0 auto 18px;border-radius:50%;background:${color};font-size:32px}h1{margin:0 0 12px;color:${color}}p{line-height:1.65;color:#d1d5db}.hint{font-size:14px;color:#9ca3af}</style>`
+    + `</head><body><main class="card"><div class="mark">${success ? '✓' : '!'}</div><h1>${escapedTitle}</h1><p>${escapedMessage}</p><p class="hint">You can safely close this page and return to Discord.</p></main></body></html>`;
 }
 
 function escapeHtml(value) {
@@ -35,6 +86,18 @@ function escapeHtml(value) {
 
 function createOsuVerificationService({ apiHandler, bot, store }) {
   let server;
+
+  function createAuthorizationUrl(state) {
+    const authorizationUrl = new URL('https://osu.ppy.sh/oauth/authorize');
+    authorizationUrl.search = new URLSearchParams({
+      client_id: OSU_CLIENT_ID,
+      redirect_uri: OSU_REDIRECT_URI,
+      response_type: 'code',
+      scope: 'public identify',
+      state,
+    }).toString();
+    return authorizationUrl.toString();
+  }
 
   async function validateAssignableRole(guild, role) {
     if (!role || role.id === guild.id || role.managed) {
@@ -83,7 +146,7 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
       await member.setNickname(osuUser.username, 'Verified through osu! OAuth');
     }
     await store.saveVerification({ guildId, discordUserId, osuUser });
-    return { nicknameUpdated, role };
+    return { guildName: guild.name, nicknameUpdated, role };
   }
 
   async function exchangeCodeForOsuUser(code) {
@@ -98,7 +161,7 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
         redirect_uri: OSU_REDIRECT_URI,
       }),
     });
-    if (!tokenResponse.ok) throw new Error('osu! declined authentication. Please start `!osuverify <osu_user_id>` again.');
+    if (!tokenResponse.ok) throw new Error('osu! declined authentication. Please run /osuverify or !osuverify again.');
     const token = await tokenResponse.json();
     const profileResponse = await fetch('https://osu.ppy.sh/api/v2/me', {
       headers: { authorization: `Bearer ${token.access_token}`, accept: 'application/json' },
@@ -173,13 +236,13 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
 
     if (!pending || new Date(pending.expires_at).getTime() < Date.now() || !code) {
       response.writeHead(400, { 'content-type': 'text/html; charset=utf-8' });
-      response.end(htmlPage('Link expired', 'Return to Discord and run !osuverify <osu_user_id> again.'));
+      response.end(htmlPage('Link expired', 'Return to Discord and run /osuverify or !osuverify again.'));
       return;
     }
 
     try {
       const osuUser = await exchangeCodeForOsuUser(code);
-      if (String(osuUser.id) !== pending.osu_user_id) {
+      if (String(pending.osu_user_id) !== '0' && String(osuUser.id) !== String(pending.osu_user_id)) {
         throw new Error(`The signed-in account has osu! ID ${osuUser.id}, but this link is for ID ${pending.osu_user_id}.`);
       }
       if (await store.findOtherOwner(pending.guild_id, pending.discord_user_id, osuUser.id)) {
@@ -198,9 +261,26 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
       const nicknameNotice = result.nicknameUpdated
         ? 'Your Discord nickname was updated to your osu! username.'
         : 'Your nickname was unchanged because Discord does not allow bots to edit the server owner.';
-      await bot.users.fetch(pending.discord_user_id).then((verifiedUser) => verifiedUser.send(
-        `✅ You are verified as **${osuUser.username}** and received the **${result.role.name}** role. ${nicknameNotice}`,
-      )).catch((error) => {
+      await bot.users.fetch(pending.discord_user_id).then((verifiedUser) => {
+        const completionEmbed = new EmbedBuilder()
+          .setColor(0x22c55e)
+          .setAuthor({
+            name: `${result.guildName} • osu! verification`,
+            ...(bot.user?.displayAvatarURL?.() ? { iconURL: bot.user.displayAvatarURL() } : {}),
+          })
+          .setTitle('✅ Verification complete')
+          .setURL(osuProfileUrl(osuUser))
+          .setDescription(`You are verified as **${osuUser.username}** and received the **${result.role.name}** role.`)
+          .addFields(
+            { name: '🎮 osu! profile', value: `[${osuUser.username}](${osuProfileUrl(osuUser)})`, inline: true },
+            { name: '🏷️ Verified role', value: result.role.name, inline: true },
+            { name: '✏️ Discord nickname', value: nicknameNotice },
+          )
+          .setFooter({ text: `osu! user #${osuUser.id} • Verified by Alren` })
+          .setTimestamp();
+        addProfileArtwork(completionEmbed, osuUser, bot.user?.displayAvatarURL?.());
+        return verifiedUser.send({ embeds: [completionEmbed] });
+      }).catch((error) => {
         console.warn('Could not send private verification result:', error.message);
       });
     } catch (error) {
@@ -237,8 +317,8 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
       await message.reply('Use this command in a Discord server.');
       return;
     }
-    if (!osuUserId || !/^\d{1,20}$/.test(osuUserId)) {
-      await message.reply('Usage: `!osuverify <osu_user_id>` — for example, `!osuverify 66070220`.\nFind the ID in the profile URL, such as https://osu.ppy.sh/users/12852613');
+    if (osuUserId && !/^\d{1,20}$/.test(osuUserId)) {
+      await message.reply('The optional osu! ID must contain numbers only. You can also run `/osuverify` or `!osuverify` without an ID.');
       return;
     }
     const configError = getConfigError(store);
@@ -253,24 +333,19 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
       await message.reply(error.message);
       return;
     }
-    try {
-      if (await store.findOtherOwner(message.guildId, message.author.id, osuUserId)) {
-        await message.reply('This osu! ID is already verified by another member of this server.');
+    let osuProfile;
+    if (osuUserId) {
+      try {
+        if (await store.findOtherOwner(message.guildId, message.author.id, osuUserId)) {
+          await message.reply('This osu! ID is already verified by another member of this server.');
+          return;
+        }
+        osuProfile = await getPublicOsuUser(osuUserId);
+      } catch (error) {
+        console.error('Could not look up osu! user:', error.message);
+        await message.reply(error.message);
         return;
       }
-    } catch (error) {
-      console.error('Could not check osu! verification:', error.message);
-      await message.reply(error.message);
-      return;
-    }
-
-    let osuProfile;
-    try {
-      osuProfile = await getPublicOsuUser(osuUserId);
-    } catch (error) {
-      console.error('Could not look up osu! user:', error.message);
-      await message.reply(error.message);
-      return;
     }
 
     const state = crypto.randomBytes(32).toString('hex');
@@ -281,7 +356,7 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
         discordUserId: message.author.id,
         expiresAt,
         guildId: message.guildId,
-        osuUserId,
+        osuUserId: osuUserId || '0',
         state,
       });
     } catch (error) {
@@ -289,25 +364,53 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
       await message.reply(error.message);
       return;
     }
-    const authorizationUrl = new URL('https://osu.ppy.sh/oauth/authorize');
-    authorizationUrl.search = new URLSearchParams({
-      client_id: OSU_CLIENT_ID,
-      redirect_uri: OSU_REDIRECT_URI,
-      response_type: 'code',
-      scope: 'public identify',
-      state,
-    }).toString();
     try {
-      await message.author.send(
-        `Username IGN: **${osuProfile.username}**\nosu! ID: **${osuProfile.id}**\n\n[Click To verify](${authorizationUrl})\n\nThis link expires in 10 minutes and verifies only this osu! ID.`,
-      );
+      await message.author.send(createVerificationMessage({
+        authorizationUrl: createAuthorizationUrl(state),
+        botAvatarUrl: bot.user?.displayAvatarURL?.(),
+        guildName: message.guild?.name || 'this server',
+        osuProfile,
+      }));
       await message.reply('📩 Your private verification link was sent by DM. Enable direct messages from server members if you cannot find it.');
     } catch (error) {
       await store.deleteVerificationRequest(state).catch((deleteError) => {
         console.error('Could not remove failed verification request:', deleteError.message);
       });
       console.error('Could not send osu! verification DM:', error.message);
-      await message.reply('I could not send you a DM. Enable “Allow direct messages from server members”, then run `!osuverify <osu_user_id>` again.');
+      await message.reply('I could not send you a DM. Enable “Allow direct messages from server members”, then run `/osuverify` or `!osuverify` again.');
+    }
+  }
+
+  async function sendWelcomeVerification(member) {
+    if (!member || member.user.bot || getConfigError(store) || !server) return false;
+    try {
+      if (await store.getVerification(member.guild.id, member.id)) return false;
+      await getVerificationRole(member.guild);
+      const state = crypto.randomBytes(32).toString('hex');
+      await store.createVerificationRequest({
+        channelId: member.guild.systemChannelId || member.guild.id,
+        discordUserId: member.id,
+        expiresAt: new Date(Date.now() + STATE_TTL_MS).toISOString(),
+        guildId: member.guild.id,
+        osuUserId: '0',
+        state,
+      });
+      try {
+        await member.send(createVerificationMessage({
+          authorizationUrl: createAuthorizationUrl(state),
+          botAvatarUrl: bot.user?.displayAvatarURL?.(),
+          guildName: member.guild.name,
+          welcome: true,
+        }));
+        return true;
+      } catch (error) {
+        await store.deleteVerificationRequest(state).catch(() => {});
+        console.warn(`Could not DM verification link to ${member.id}:`, error.message);
+        return false;
+      }
+    } catch (error) {
+      console.warn(`Could not prepare welcome verification in ${member.guild.id}:`, error.message);
+      return false;
     }
   }
 
@@ -315,30 +418,62 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
     if (!message.inGuild()) return;
     const record = await store.getVerification(message.guildId, message.author.id);
     if (!record) {
-      await message.reply('You have not verified an osu! account yet. Use `!osuverify <osu_user_id>` to begin.');
+      await message.reply('You have not verified an osu! account yet. Use `/osuverify` or `!osuverify` to begin.');
       return;
     }
-    await message.reply(`You are verified as **${record.osu_username}** since ${new Date(record.verified_at).toLocaleString('en-US')}.`);
+    let osuUser = {
+      id: record.osu_user_id,
+      username: record.osu_username,
+    };
+    try {
+      osuUser = await getPublicOsuUser(String(record.osu_user_id));
+    } catch (error) {
+      console.warn('Could not refresh verified osu! profile artwork:', error.message);
+    }
+    const verifiedAt = Date.parse(record.verified_at || '');
+    const verifiedText = Number.isNaN(verifiedAt)
+      ? 'Previously verified'
+      : `<t:${Math.floor(verifiedAt / 1000)}:R>`;
+    const profileUrl = osuProfileUrl(osuUser);
+    const embed = new EmbedBuilder()
+      .setColor(0xff66aa)
+      .setTitle(`✅ ${osuUser.username || record.osu_username}`)
+      .setURL(profileUrl)
+      .setDescription('Your Discord account is linked to this osu! profile.')
+      .addFields(
+        { name: '🎮 osu! ID', value: String(osuUser.id || record.osu_user_id), inline: true },
+        { name: '🕒 Verified', value: verifiedText, inline: true },
+        { name: '🔗 Profile', value: `[Open osu! profile ↗](${profileUrl})` },
+      )
+      .setFooter({ text: 'Alren osu! verification' });
+    addProfileArtwork(embed, osuUser, bot.user?.displayAvatarURL?.());
+    await message.reply({ embeds: [embed] });
   }
 
-  async function setVerificationRole(message) {
+  async function configureVerificationRole(guild, role) {
+    await validateAssignableRole(guild, role);
+    await store.saveVerificationRole(guild.id, role.id);
+    return role;
+  }
+
+  async function setVerificationRole(message, selectedRole) {
     if (!message.inGuild()) {
       await message.reply('Use this command in a Discord server.');
       return;
     }
-    if (!message.member.permissions.has(PermissionsBitField.Flags.ManageGuild)) {
+    const memberPermissions = message.memberPermissions || message.member?.permissions;
+    if (!memberPermissions?.has(PermissionsBitField.Flags.ManageGuild)) {
       await message.reply('Only members with the Manage Server permission can set the verification role.');
       return;
     }
-    const role = message.mentions.roles.first();
+    const role = selectedRole || message.mentions?.roles?.first();
     if (!role) {
       await message.reply('Usage: `!verify-role @role` — for example, `!verify-role @Verified`.');
       return;
     }
 
     try {
-      await validateAssignableRole(message.guild, role);
-      await store.saveVerificationRole(message.guildId, role.id);
+      await configureVerificationRole(message.guild, role);
       await message.reply(`The osu! verification role is now ${role}.`);
     } catch (error) {
       await message.reply(error.message);
@@ -355,7 +490,15 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
     await message.reply(`The current osu! verification role is <@&${roleId}>.`);
   }
 
-  return { begin, setVerificationRole, showStatus, showVerificationRole, startServer };
+  return {
+    begin,
+    configureVerificationRole,
+    sendWelcomeVerification,
+    setVerificationRole,
+    showStatus,
+    showVerificationRole,
+    startServer,
+  };
 }
 
-module.exports = { createOsuVerificationService };
+module.exports = { createOsuVerificationService, createVerificationMessage };

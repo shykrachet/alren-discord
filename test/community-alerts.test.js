@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
+  createBnRequestEmbed,
   createCommunityAlertsService,
   normalizeBnRequests,
   normalizeMissionOpenings,
@@ -18,6 +19,14 @@ function bnResponse(status) {
         mode: 'osu',
         requestStatus: status === 'open' ? ['personalQueue'] : ['personalQueue', 'closed'],
         requestLink: 'https://example.com/queue',
+        cover: 'https://example.com/banner.jpg',
+        languages: ['english', 'thai'],
+        genrePreferences: ['rock'],
+        genreNegativePreferences: ['country'],
+        languagePreferences: ['instrumental'],
+        osuStylePreferences: ['tech'],
+        detailPreferences: ['featured artist'],
+        mapperPreferences: ['new mapper'],
       }],
     }],
   };
@@ -40,6 +49,18 @@ test('normalizes BN request status using the upstream UI rules', () => {
   });
   assert.deepEqual(entries.map((entry) => entry.status), ['open', 'closed', 'unknown']);
   assert.equal(entries[0].mode, 'mania');
+});
+
+test('creates a rich BN request card with artwork and preferences', () => {
+  const [entry] = normalizeBnRequests(bnResponse('open'));
+  const embed = createBnRequestEmbed(entry).toJSON();
+
+  assert.equal(embed.image.url, 'https://example.com/banner.jpg');
+  assert.equal(embed.thumbnail.url, 'https://a.ppy.sh/123');
+  assert.match(embed.author.name, /Mapper/);
+  assert.match(embed.fields.find((field) => field.name.includes('Genre')).value, /✅ rock/);
+  assert.match(embed.fields.find((field) => field.name.includes('Genre')).value, /❌ country/);
+  assert.match(embed.fields.find((field) => field.name.includes('Languages')).value, /english, thai/);
 });
 
 test('normalizes only mission-open log events', () => {

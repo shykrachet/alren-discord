@@ -1,6 +1,6 @@
 const { version } = require('../package.json');
 
-const releaseNotes = 'osu! OAuth verification, configurable verification roles, Supabase storage, and English help messages.';
+const releaseNotes = 'Rich osu! artwork, detailed BN cards, simple slash commands, and an interactive TH/EN help menu.';
 
 function getReleaseChannel() {
   if (version.includes('-beta.')) return 'Beta';

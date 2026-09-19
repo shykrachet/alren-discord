@@ -85,7 +85,18 @@ bot.once('clientReady', async () => {
   }
 });
 
-bot.on('messageCreate', createMessageHandler({ bot }));
+bot.on('messageCreate', createMessageHandler({
+  bot,
+  chat,
+  osuMaps,
+  osuVerification,
+  store: verificationStore,
+}));
+bot.on('guildMemberAdd', (member) => {
+  osuVerification.sendWelcomeVerification(member).catch((error) => {
+    console.error('Welcome verification failed:', error.message);
+  });
+});
 const handleInteraction = createInteractionHandler({
   chat,
   osuMaps,
