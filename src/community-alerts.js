@@ -17,8 +17,18 @@ const MODE_NAMES = {
 
 const REQUEST_METHOD_NAMES = {
   gameChat: 'osu! chat',
+  moddingQueue: 'Modding queue',
   personalQueue: 'Personal queue',
 };
+
+const BN_ROLE_NAMES = {
+  bn: 'Beatmap Nominator',
+  nat: 'Nomination Assessment Team',
+};
+
+function titleCase(value) {
+  return value ? `${value[0].toUpperCase()}${value.slice(1)}` : 'Unknown';
+}
 
 function safeHttpUrl(value) {
   if (!value) return null;
@@ -35,6 +45,30 @@ function normalizeBnMode(value) {
   return MODE_NAMES[value] ? value : 'all';
 }
 
+function stringList(value) {
+  return Array.isArray(value) ? value.filter((item) => typeof item === 'string' && item.trim()) : [];
+}
+
+function compactText(value, maxLength = 1024) {
+  const text = String(value || '').trim();
+  if (!text) return 'None listed';
+  return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text;
+}
+
+function preferenceText(positive = [], negative = [], custom = []) {
+  const lines = [
+    ...stringList(positive).map((item) => `✅ ${item}`),
+    ...stringList(negative).map((item) => `❌ ${item}`),
+    ...stringList(custom).map((item) => `• ${item}`),
+  ];
+  return compactText(lines.join('\n'), 650);
+}
+
+function relativeDiscordTime(value) {
+  const time = Date.parse(value || '');
+  return Number.isNaN(time) ? 'Unknown' : `<t:${Math.floor(time / 1000)}:R>`;
+}
+
 function shouldDeliverCommunityAlert(alert, settings) {
   if (!settings?.channel_id) return false;
   if (alert.type !== 'bn-open') return alert.type === 'mission-open';
@@ -49,6 +83,7 @@ function normalizeBnRequests(data) {
   for (const modeGroup of data?.allUsersByMode || []) {
     for (const user of modeGroup.users || []) {
       const mode = normalizeBnMode(user.mode || modeGroup._id);
+      const preferenceMode = ['osu', 'taiko', 'catch', 'mania'].includes(mode) ? mode : 'osu';
       const id = user.id || user.osuId;
       if (!id) continue;
       const key = `${id}:${mode}`;
@@ -70,6 +105,26 @@ function normalizeBnRequests(data) {
         requestLink: safeHttpUrl(user.requestLink),
         requestInfo: user.requestInfo || null,
         lastOpenedAt: user.lastOpenedForRequests || null,
+        avatarUrl: user.osuId ? `https://a.ppy.sh/${encodeURIComponent(user.osuId)}` : null,
+        coverUrl: safeHttpUrl(user.cover),
+        group: user.groups || null,
+        level: user.level || null,
+        languages: stringList(user.languages),
+        genrePreferences: stringList(user.genrePreferences),
+        genreNegativePreferences: stringList(user.genreNegativePreferences),
+        customGenrePreferences: stringList(user.customGenrePreferences),
+        languagePreferences: stringList(user.languagePreferences),
+        languageNegativePreferences: stringList(user.languageNegativePreferences),
+        customLanguagePreferences: stringList(user.customLanguagePreferences),
+        mapPreferences: stringList(user[`${preferenceMode}StylePreferences`]),
+        mapNegativePreferences: stringList(user[`${preferenceMode}StyleNegativePreferences`]),
+        songDetailPreferences: stringList(user.detailPreferences),
+        songDetailNegativePreferences: stringList(user.detailNegativePreferences),
+        mapperPreferences: stringList(user.mapperPreferences),
+        mapperNegativePreferences: stringList(user.mapperNegativePreferences),
+        customMapPreferences: stringList(user.customMapPreferences),
+        customDetailPreferences: stringList(user.customDetailPreferences),
+        customMapperPreferences: stringList(user.customMapperPreferences),
       });
     }
   }
@@ -99,26 +154,40 @@ function createBnRequestEmbed(entry) {
   const profileUrl = `https://osu.ppy.sh/users/${encodeURIComponent(entry.osuId)}`;
   const bnUrl = new URL(BN_PAGE_URL);
   bnUrl.searchParams.set('id', entry.id);
+  const roleName = BN_ROLE_NAMES[entry.group] || 'BN/NAT member';
+  const level = entry.level ? ` • ${titleCase(entry.level)}` : '';
   const embed = new EmbedBuilder()
     .setColor(0x22c55e)
-    .setTitle('🟢 BN requests are open')
+    .setAuthor({
+      name: `${entry.username} • ${roleName}${level}`,
+      ...(entry.avatarUrl ? { iconURL: entry.avatarUrl } : {}),
+    })
+    .setTitle('🟢 Beatmap requests are open')
     .setURL(bnUrl.toString())
-    .setDescription(`**[${entry.username}](${profileUrl})** is now accepting **${modeName}** requests.`)
+    .setDescription(`**[${entry.username}](${profileUrl})** is accepting **${modeName}** requests now.`)
     .addFields(
-      { name: 'Request method', value: methods, inline: true },
-      { name: 'Mode', value: modeName, inline: true },
+      { name: '🟢 Status', value: '**Open**', inline: true },
+      { name: '🕒 Last opened', value: relativeDiscordTime(entry.lastOpenedAt), inline: true },
+      { name: '📨 Request methods', value: methods, inline: true },
+      { name: '🗣️ Languages', value: entry.languages?.join(', ') || 'Not listed', inline: true },
+      { name: '🎸 Genre preferences', value: preferenceText(entry.genrePreferences, entry.genreNegativePreferences, entry.customGenrePreferences), inline: true },
+      { name: '🌐 Language preferences', value: preferenceText(entry.languagePreferences, entry.languageNegativePreferences, entry.customLanguagePreferences), inline: true },
+      { name: `🎮 ${modeName} map preferences`, value: preferenceText(entry.mapPreferences, entry.mapNegativePreferences, entry.customMapPreferences), inline: true },
+      { name: '🎧 Song details', value: preferenceText(entry.songDetailPreferences, entry.songDetailNegativePreferences, entry.customDetailPreferences), inline: true },
+      { name: '🗺️ Mapper preferences', value: preferenceText(entry.mapperPreferences, entry.mapperNegativePreferences, entry.customMapperPreferences), inline: true },
     )
-    .setTimestamp(entry.lastOpenedAt ? new Date(entry.lastOpenedAt) : new Date());
+    .setFooter({ text: 'BN request data • bn.mappersguild.com' });
 
   if (entry.requestLink) {
-    embed.addFields({ name: 'Request link', value: `[Open request page](${entry.requestLink})` });
+    embed.addFields({ name: '🔗 Request link', value: `[Open request page ↗](${entry.requestLink})` });
   }
   if (entry.requestInfo) {
-    const info = entry.requestInfo.length > 900
-      ? `${entry.requestInfo.slice(0, 897)}...`
-      : entry.requestInfo;
-    embed.addFields({ name: 'Notes', value: info });
+    embed.spliceFields(4, 0, { name: '📝 Request information', value: compactText(entry.requestInfo, 900) });
   }
+  if (entry.coverUrl) embed.setImage(entry.coverUrl);
+  if (entry.avatarUrl) embed.setThumbnail(entry.avatarUrl);
+  const openedAt = Date.parse(entry.lastOpenedAt || '');
+  embed.setTimestamp(Number.isNaN(openedAt) ? new Date() : new Date(openedAt));
   return embed;
 }
 

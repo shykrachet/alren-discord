@@ -124,14 +124,12 @@ After changing Railway Variables, redeploy the service.
 
 ## Private chat
 
-Use the `/alren` slash command, enter a message, and send it.
+Use `/alren` or `!alren <message>` to chat with Alren. Mentioning the bot with a message also starts a chat.
 
-- Only you can see the conversation.
-- Alren’s response deletes automatically after five minutes.
-- Use `/alrenclear` to clear your private chat memory in the current channel.
+- Slash replies are ephemeral. Prefix and mention replies are sent by DM so the conversation stays private.
+- Slash replies delete automatically after five minutes.
+- Use `/alrenclear`, `!alrenclear`, or `!reset` to clear your private chat memory in the current channel.
 - Use `/alrenhelp` to open this guide privately.
-
-Public chat through `!chat`, bot mentions, and `!reset` is disabled.
 
 ## osu! verification
 
@@ -147,19 +145,18 @@ The Alren role must be above the selected role in **Server Settings → Roles**.
 
 ### For members
 
-1. Open the osu! profile URL, for example `https://osu.ppy.sh/users/[your-id-osu]`.
-2. Copy the number at the end of the link.
-3. Run the command in the Discord server:
+1. Run either command in the Discord server:
 
 ```text
-/osuverify osu_user_id:[your-id-osu]
+/osuverify
+!osuverify
 ```
 
-4. Alren sends a personal verification link by DM.
-5. Open the link and sign in to the same osu! account.
-6. Alren gives the configured role, updates your Discord nickname to your osu! username when Discord allows it, and sends the result by DM. Nothing is posted in the server channel.
+2. Alren sends a styled personal verification message with an OAuth button by DM.
+3. Open the link and sign in to osu!. Alren detects the account ID and username automatically.
+4. Alren gives the configured role, updates your Discord nickname to your osu! username when Discord allows it, and sends the result by DM.
 
-The verification link lasts for 10 minutes and can only verify the osu! ID entered in the command.
+When a new member joins a server that has a verification role configured, Alren automatically sends the same private OAuth onboarding message. Verification links last for 10 minutes and are tied to the Discord member who requested or received them. An optional osu! ID may still be supplied to `/osuverify` or `!osuverify` when the account should be preselected and checked before OAuth.
 
 > Discord does not allow bots to change a Server Owner’s nickname. The Server Owner can still verify and receive the configured role.
 
@@ -248,24 +245,38 @@ Example response shape:
 
 ## Commands
 
+### Easy slash commands
+
+These short commands cover the most common actions:
+
 | Command | Description |
 | --- | --- |
-| `/alren message` | Start a private chat with Alren. The response deletes automatically after five minutes. |
-| `/alrenclear` | Clear your private Alren chat memory in the current channel. |
-| `/alrenhelp` | Open this guide privately. |
-| `!alrenhelp` | Show this guide in the channel. |
-| `!ping` | Check whether Alren is online. |
-| `!version` or `!ver` | Show the bot version. |
-| `/verify-role role:@role` | Set the role awarded after osu! verification privately. Requires Manage Server. |
-| `/verify-role-status` | Show the configured verification role privately. |
-| `/osuverify osu_user_id` | Send a private osu! OAuth verification link. |
-| `/osuverify-status` | Show the linked osu! account in this server privately. |
-| `/osumap` | Post a random beatmap publicly using this server’s saved filters. |
+| `/help [language]` | Open a private dropdown to choose the Thai or English guide. |
+| `/verify [osu_id]` | Start one-click osu! OAuth verification. The ID is optional. |
+| `/map [status] [mode]` | Post a random beatmap with cover artwork. |
+| `/setup` | View or configure Verify, Beatmap feed, and BN alerts in one private admin panel. |
+
+Existing long-form slash commands and `!` commands remain available for compatibility.
+
+| Command | Description |
+| --- | --- |
+| `/alren message` or `!alren message` | Start a private chat with Alren. Prefix replies are sent by DM. |
+| `/alrenclear`, `!alrenclear`, or `!reset` | Clear your private Alren chat memory in the current channel. |
+| `/alrenhelp` or `!alrenhelp` | Open a dropdown to choose the styled Thai or English command guide. |
+| `/ping` or `!ping` | Check whether Alren is online. |
+| `/version`, `!version`, or `!ver` | Show the bot version. |
+| `/verify-role role:@role` or `!verify-role @role` | Set the role awarded after osu! verification. Requires Manage Server. |
+| `/verify-role-status` or `!verify-role-status` | Show the configured verification role. |
+| `/osuverify [osu_user_id]` or `!osuverify [osu_user_id]` | Send an OAuth button by DM and automatically detect the signed-in osu! account. |
+| `/osuverify-status` or `!osuverify-status` | Show the linked osu! account in this server. |
+| `/osumap` or `!osumap [status] [mode]` | Post a random beatmap publicly using this server’s saved filters. |
 | `/osumap status mode` | Post a map with temporary status and/or mode filters. |
-| `/osumap-settings status mode` | Set the current channel as the automatic beatmap feed and save optional filters privately. Requires Manage Server. |
-| `/community-alert-settings channel bn_mode` | Set the channel and BN mode for BN/Mappers' Guild notifications privately. Requires Manage Server. |
+| `/osumap-settings status mode` or `!osumap-settings [status] [mode]` | Set the current channel as the automatic beatmap feed. Requires Manage Server. |
+| `/community-alert-settings channel bn_mode` or `!community-alert-settings #channel [mode]` | Configure BN/Mappers' Guild notifications. Requires Manage Server. |
 
 ## Troubleshooting
+
+For Thai instructions covering Discord Bot Token reset, local `.env` setup, Railway updates, and `TokenInvalid`, see [`docs/DISCORD_TOKEN_SETUP_TH.md`](docs/DISCORD_TOKEN_SETUP_TH.md).
 
 ### `Cannot find module './src/osu-maps'`
 

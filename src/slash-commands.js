@@ -1,8 +1,14 @@
 const {
-  ChannelType, MessageFlags, PermissionsBitField, REST, Routes, SlashCommandBuilder,
+  ChannelType, EmbedBuilder, MessageFlags, PermissionsBitField, REST, Routes, SlashCommandBuilder,
 } = require('discord.js');
-const { formatHelp } = require('./message-handler');
+const {
+  createAlrenEmbed,
+  createHelpEmbed,
+  createHelpLanguageMenu,
+  createHelpLanguagePrompt,
+} = require('./message-handler');
 const { createMapEmbed } = require('./osu-maps');
+const { formatVersion } = require('./version');
 
 const MAP_STATUS_CHOICES = [
   { name: 'Ranked', value: 'ranked' },
@@ -24,6 +30,10 @@ const BN_MODE_CHOICES = [
   { name: 'Catch', value: 'catch' },
   { name: 'Mania', value: 'mania' },
 ];
+const HELP_LANGUAGE_CHOICES = [
+  { name: 'ไทย (TH)', value: 'th' },
+  { name: 'English (EN)', value: 'en' },
+];
 
 const CHAT_COMMAND = new SlashCommandBuilder()
   .setName('alren')
@@ -39,19 +49,47 @@ const CLEAR_CHAT_COMMAND = new SlashCommandBuilder()
 
 const HELP_COMMAND = new SlashCommandBuilder()
   .setName('alrenhelp')
-  .setDescription('Show Alren commands privately.');
+  .setDescription('เปิดคู่มือคำสั่ง Alren แบบส่วนตัว เลือกภาษาไทยหรือ English')
+  .addStringOption((option) => option
+    .setName('language')
+    .setDescription('เลือกภาษาของคู่มือ / Choose guide language')
+    .addChoices(...HELP_LANGUAGE_CHOICES));
+
+const PING_COMMAND = new SlashCommandBuilder()
+  .setName('ping')
+  .setDescription('Check whether Alren is online.');
+
+const VERSION_COMMAND = new SlashCommandBuilder()
+  .setName('version')
+  .setDescription('Show the current Alren version.');
+
+const QUICK_HELP_COMMAND = new SlashCommandBuilder()
+  .setName('help')
+  .setDescription('ดูเมนูคำสั่งทั้งหมดของ Alren แบบส่วนตัว')
+  .addStringOption((option) => option
+    .setName('language')
+    .setDescription('เลือกภาษาของคู่มือ / Choose guide language')
+    .addChoices(...HELP_LANGUAGE_CHOICES));
 
 const OSU_VERIFY_COMMAND = new SlashCommandBuilder()
   .setName('osuverify')
   .setDescription('Verify an osu! account privately.')
   .addStringOption((option) => option
     .setName('osu_user_id')
-    .setDescription('The number from your osu! profile URL')
-    .setRequired(true));
+    .setDescription('Optional: the number from your osu! profile URL')
+    .setRequired(false));
 
 const OSU_VERIFY_STATUS_COMMAND = new SlashCommandBuilder()
   .setName('osuverify-status')
   .setDescription('Show your verified osu! account privately.');
+
+const QUICK_VERIFY_COMMAND = new SlashCommandBuilder()
+  .setName('verify')
+  .setDescription('ยืนยันบัญชี osu! ด้วยปุ่ม OAuth แบบส่วนตัว')
+  .addStringOption((option) => option
+    .setName('osu_id')
+    .setDescription('ไม่ใส่ก็ได้ ระบบจะตรวจบัญชีจาก osu! ให้อัตโนมัติ')
+    .setRequired(false));
 
 const VERIFY_ROLE_COMMAND = new SlashCommandBuilder()
   .setName('verify-role')
@@ -89,6 +127,18 @@ const OSU_MAP_SETTINGS_COMMAND = new SlashCommandBuilder()
     .setDescription('Default game mode')
     .addChoices(...MAP_MODE_CHOICES));
 
+const QUICK_MAP_COMMAND = new SlashCommandBuilder()
+  .setName('map')
+  .setDescription('สุ่ม beatmap พร้อมรูปปกลงในห้องนี้')
+  .addStringOption((option) => option
+    .setName('status')
+    .setDescription('สถานะของแผนที่ (ไม่ใส่จะใช้ค่าที่เซิร์ฟเวอร์ตั้งไว้)')
+    .addChoices(...MAP_STATUS_CHOICES))
+  .addStringOption((option) => option
+    .setName('mode')
+    .setDescription('โหมดเกม (ไม่ใส่จะใช้ค่าที่เซิร์ฟเวอร์ตั้งไว้)')
+    .addChoices(...MAP_MODE_CHOICES));
+
 const COMMUNITY_ALERT_SETTINGS_COMMAND = new SlashCommandBuilder()
   .setName('community-alert-settings')
   .setDescription('Configure BN and Mappers’ Guild alerts privately.')
@@ -101,17 +151,50 @@ const COMMUNITY_ALERT_SETTINGS_COMMAND = new SlashCommandBuilder()
     .setDescription('BN request mode to notify about')
     .addChoices(...BN_MODE_CHOICES));
 
+const SETUP_COMMAND = new SlashCommandBuilder()
+  .setName('setup')
+  .setDescription('ตั้งค่า Verify, Beatmap และ BN alerts ในคำสั่งเดียว (สำหรับแอดมิน)')
+  .addRoleOption((option) => option
+    .setName('verify_role')
+    .setDescription('ยศที่จะมอบให้สมาชิกหลัง Verify สำเร็จ'))
+  .addChannelOption((option) => option
+    .setName('beatmap_channel')
+    .setDescription('ห้องสำหรับส่ง beatmap อัตโนมัติ')
+    .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+  .addStringOption((option) => option
+    .setName('map_status')
+    .setDescription('สถานะ beatmap เริ่มต้น')
+    .addChoices(...MAP_STATUS_CHOICES))
+  .addStringOption((option) => option
+    .setName('map_mode')
+    .setDescription('โหมด beatmap เริ่มต้น')
+    .addChoices(...MAP_MODE_CHOICES))
+  .addChannelOption((option) => option
+    .setName('alerts_channel')
+    .setDescription('ห้องสำหรับแจ้งเตือน BN และ Mappers’ Guild')
+    .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+  .addStringOption((option) => option
+    .setName('bn_mode')
+    .setDescription('โหมด BN ที่ต้องการแจ้งเตือน')
+    .addChoices(...BN_MODE_CHOICES));
+
 const COMMANDS = [
   CHAT_COMMAND.toJSON(),
   CLEAR_CHAT_COMMAND.toJSON(),
   HELP_COMMAND.toJSON(),
+  PING_COMMAND.toJSON(),
+  VERSION_COMMAND.toJSON(),
+  QUICK_HELP_COMMAND.toJSON(),
   OSU_VERIFY_COMMAND.toJSON(),
   OSU_VERIFY_STATUS_COMMAND.toJSON(),
+  QUICK_VERIFY_COMMAND.toJSON(),
   VERIFY_ROLE_COMMAND.toJSON(),
   VERIFY_ROLE_STATUS_COMMAND.toJSON(),
   OSU_MAP_COMMAND.toJSON(),
   OSU_MAP_SETTINGS_COMMAND.toJSON(),
+  QUICK_MAP_COMMAND.toJSON(),
   COMMUNITY_ALERT_SETTINGS_COMMAND.toJSON(),
+  SETUP_COMMAND.toJSON(),
 ];
 const DEFAULT_DELETE_AFTER_SECONDS = 300;
 
@@ -139,7 +222,9 @@ function createPrivateCommandContext(interaction) {
     inGuild: () => interaction.inGuild(),
     member: interaction.member,
     memberPermissions: interaction.memberPermissions,
-    reply: (content) => interaction.editReply({ content }),
+    reply: (payload) => interaction.editReply(
+      typeof payload === 'string' ? { content: payload } : payload,
+    ),
   };
 }
 
@@ -151,6 +236,28 @@ function describeFilters({ mode, status }) {
 
 function describeBnMode(mode) {
   return BN_MODE_CHOICES.find((choice) => choice.value === mode)?.name ?? 'All osu! modes';
+}
+
+function createSetupEmbed({ alerts, map, roleId, updated }) {
+  const mapText = map?.channel_id
+    ? `<#${map.channel_id}>\n${describeFilters({ mode: map.mode_filter, status: map.status_filter })}`
+    : 'ยังไม่ได้ตั้งค่า';
+  const alertsText = alerts?.channel_id
+    ? `<#${alerts.channel_id}>\n${describeBnMode(alerts.bn_mode_filter || 'all')}`
+    : 'ยังไม่ได้ตั้งค่า';
+  return new EmbedBuilder()
+    .setColor(updated ? 0x22c55e : 0x5865f2)
+    .setTitle(updated ? '✅ บันทึกการตั้งค่า Alren แล้ว' : '⚙️ การตั้งค่า Alren')
+    .setDescription(updated
+      ? 'ระบบพร้อมใช้งานตามค่าด้านล่าง'
+      : 'ใส่เฉพาะตัวเลือกที่ต้องการเปลี่ยน แล้วเรียก `/setup` อีกครั้ง')
+    .addFields(
+      { name: '✅ Verify role', value: roleId ? `<@&${roleId}>` : 'ยังไม่ได้ตั้งค่า', inline: true },
+      { name: '🎵 Beatmap feed', value: mapText, inline: true },
+      { name: '🔔 BN alerts', value: alertsText, inline: true },
+    )
+    .setFooter({ text: 'เฉพาะผู้มีสิทธิ์ Manage Server เท่านั้นที่ตั้งค่าได้' })
+    .setTimestamp();
 }
 
 async function registerSlashCommands({ client, token, rest: providedRest }) {
@@ -183,7 +290,97 @@ async function registerSlashCommands({ client, token, rest: providedRest }) {
 
 function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
   return async (interaction) => {
+    if (interaction.isStringSelectMenu?.() && interaction.customId === 'alrenhelp:language') {
+      const language = interaction.values[0] === 'en' ? 'en' : 'th';
+      await interaction.update({
+        embeds: [createHelpEmbed(language)],
+        components: [createHelpLanguageMenu(language)],
+      });
+      return;
+    }
     if (!interaction.isChatInputCommand()) return;
+
+    if (interaction.commandName === 'ping') {
+      await interaction.reply({
+        content: `🏓 Pong — **${interaction.client.ws.ping}ms**`,
+        flags: MessageFlags.Ephemeral,
+      });
+      scheduleReplyDeletion(interaction);
+      return;
+    }
+
+    if (interaction.commandName === 'version') {
+      await interaction.reply({ content: formatVersion(), flags: MessageFlags.Ephemeral });
+      scheduleReplyDeletion(interaction);
+      return;
+    }
+
+    if (interaction.commandName === 'setup') {
+      if (!interaction.inGuild()) {
+        await interaction.reply({ content: 'ใช้คำสั่งนี้ภายในเซิร์ฟเวอร์เท่านั้น', flags: MessageFlags.Ephemeral });
+        return;
+      }
+      if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageGuild)) {
+        await interaction.reply({ content: 'ต้องมีสิทธิ์ Manage Server จึงจะตั้งค่าได้', flags: MessageFlags.Ephemeral });
+        return;
+      }
+      if (!store?.isConfigured) {
+        await interaction.reply({ content: 'ต้องตั้งค่า Supabase ก่อนใช้งาน `/setup`', flags: MessageFlags.Ephemeral });
+        return;
+      }
+
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      try {
+        const role = interaction.options.getRole('verify_role');
+        const beatmapChannel = interaction.options.getChannel('beatmap_channel');
+        const mapStatus = interaction.options.getString('map_status');
+        const mapMode = interaction.options.getString('map_mode');
+        const alertsChannel = interaction.options.getChannel('alerts_channel');
+        const bnMode = interaction.options.getString('bn_mode');
+        const hasMapUpdate = Boolean(beatmapChannel || mapStatus || mapMode);
+        const hasAlertUpdate = Boolean(alertsChannel || bnMode);
+        const updated = Boolean(role || hasMapUpdate || hasAlertUpdate);
+
+        if (role) await osuVerification.configureVerificationRole(interaction.guild, role);
+
+        let currentMap = await store.getMapSettings(interaction.guildId);
+        if (hasMapUpdate) {
+          currentMap = await osuMaps.configureFeed({
+            channelId: beatmapChannel?.id || currentMap?.channel_id || interaction.channelId,
+            guildId: interaction.guildId,
+            mode: mapMode || currentMap?.mode_filter || 'any',
+            status: mapStatus || currentMap?.status_filter || 'ranked',
+          });
+          currentMap = {
+            channel_id: currentMap.channelId,
+            mode_filter: currentMap.mode,
+            status_filter: currentMap.status,
+          };
+        }
+
+        let currentAlerts = await store.getCommunityAlertSettings(interaction.guildId);
+        if (hasAlertUpdate) {
+          currentAlerts = {
+            channel_id: alertsChannel?.id || currentAlerts?.channel_id || interaction.channelId,
+            bn_mode_filter: bnMode || currentAlerts?.bn_mode_filter || 'all',
+          };
+          await store.saveCommunityAlertSettings(interaction.guildId, {
+            channelId: currentAlerts.channel_id,
+            bnMode: currentAlerts.bn_mode_filter,
+          });
+        }
+
+        const roleId = role?.id || await store.getVerificationRole(interaction.guildId);
+        await interaction.editReply({
+          embeds: [createSetupEmbed({ alerts: currentAlerts, map: currentMap, roleId, updated })],
+        });
+      } catch (error) {
+        console.error('Quick setup failed:', error.message);
+        await interaction.editReply(`ตั้งค่าไม่สำเร็จ: ${error.message}`);
+      }
+      scheduleReplyDeletion(interaction);
+      return;
+    }
 
     if (interaction.commandName === 'community-alert-settings') {
       if (!interaction.inGuild()) {
@@ -271,7 +468,7 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
       return;
     }
 
-    if (interaction.commandName === 'osumap') {
+    if (['osumap', 'map'].includes(interaction.commandName)) {
       if (!interaction.inGuild()) {
         await interaction.reply({
           content: 'This command can only be used in a server.',
@@ -299,9 +496,13 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
       return;
     }
 
-    if (interaction.commandName === 'alrenhelp') {
+    if (['alrenhelp', 'help'].includes(interaction.commandName)) {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      await interaction.editReply({ content: formatHelp() });
+      const language = interaction.options.getString('language');
+      await interaction.editReply({
+        embeds: [language ? createHelpEmbed(language) : createHelpLanguagePrompt()],
+        components: [createHelpLanguageMenu(language)],
+      });
       scheduleReplyDeletion(interaction);
       return;
     }
@@ -314,12 +515,13 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
       return;
     }
 
-    if (['osuverify', 'osuverify-status', 'verify-role', 'verify-role-status'].includes(interaction.commandName)) {
+    if (['osuverify', 'verify', 'osuverify-status', 'verify-role', 'verify-role-status'].includes(interaction.commandName)) {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const context = createPrivateCommandContext(interaction);
       try {
-        if (interaction.commandName === 'osuverify') {
-          await osuVerification.begin(context, interaction.options.getString('osu_user_id', true));
+        if (['osuverify', 'verify'].includes(interaction.commandName)) {
+          const optionName = interaction.commandName === 'verify' ? 'osu_id' : 'osu_user_id';
+          await osuVerification.begin(context, interaction.options.getString(optionName) ?? undefined);
         } else if (interaction.commandName === 'osuverify-status') {
           await osuVerification.showStatus(context);
         } else if (interaction.commandName === 'verify-role') {
@@ -354,8 +556,7 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
         displayName: interaction.member?.displayName || interaction.user.username,
         prompt: interaction.options.getString('message', true),
       });
-      const content = answer.length > 1900 ? `${answer.slice(0, 1897)}...` : answer;
-      await interaction.editReply({ content });
+      await interaction.editReply({ embeds: [createAlrenEmbed(answer)] });
     } catch (error) {
       console.error('Slash chat request failed:', error.message);
       await interaction.editReply('I cannot respond right now. Please try again shortly.');

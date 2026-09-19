@@ -23,6 +23,11 @@ const STATUS_COLORS = {
   qualified: 0xffcc22,
   loved: 0xff66aa,
 };
+const STATUS_ICONS = {
+  ranked: '💎',
+  qualified: '🏅',
+  loved: '💗',
+};
 
 function titleCase(value) {
   return value ? `${value[0].toUpperCase()}${value.slice(1)}` : 'Unknown';
@@ -51,25 +56,61 @@ function mapNominators(beatmapset) {
   return [...new Set(names)].join(', ') || 'Not listed';
 }
 
+function difficultySummary(beatmapset) {
+  const stars = (beatmapset.beatmaps || [])
+    .map((beatmap) => Number(beatmap.difficulty_rating))
+    .filter(Number.isFinite)
+    .sort((left, right) => left - right);
+  if (!stars.length) return `${(beatmapset.beatmaps || []).length || 'Unknown'} difficulties`;
+  const range = stars.length === 1
+    ? `${stars[0].toFixed(2)}★`
+    : `${stars[0].toFixed(2)}★ – ${stars.at(-1).toFixed(2)}★`;
+  return `${range} • ${stars.length} difficult${stars.length === 1 ? 'y' : 'ies'}`;
+}
+
+function mapLength(beatmapset) {
+  const seconds = Math.max(0, ...(beatmapset.beatmaps || [])
+    .map((beatmap) => Number(beatmap.total_length))
+    .filter(Number.isFinite));
+  if (!seconds) return 'Unknown';
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
 function createMapEmbed(beatmapset) {
   if (!beatmapset?.id) throw new Error('Cannot create an embed without a beatmapset.');
 
   const url = `https://osu.ppy.sh/beatmapsets/${beatmapset.id}`;
   const status = beatmapset.status || 'unknown';
+  const mapper = beatmapset.user_id
+    ? `[${beatmapset.creator || 'Unknown'}](https://osu.ppy.sh/users/${beatmapset.user_id})`
+    : beatmapset.creator || 'Unknown';
+  const statusLabel = `${STATUS_ICONS[status] || '🎵'} ${titleCase(status)}`;
+  const bpm = Number(beatmapset.bpm);
   const embed = new EmbedBuilder()
     .setColor(STATUS_COLORS[status] || 0x5865f2)
     .setTitle(`${beatmapset.artist || 'Unknown artist'} — ${beatmapset.title || 'Untitled'}`)
     .setURL(url)
+    .setDescription(`Mapped by ${mapper}\n[Open beatmap page ↗](${url})`)
     .addFields(
-      { name: 'Mapper', value: beatmapset.creator || 'Unknown', inline: true },
-      { name: 'Status', value: titleCase(status), inline: true },
-      { name: 'Modes', value: mapModes(beatmapset), inline: true },
-      { name: 'Nominators', value: mapNominators(beatmapset) },
+      { name: '🏷️ Status', value: statusLabel, inline: true },
+      { name: '🎮 Modes', value: mapModes(beatmapset), inline: true },
+      { name: '⭐ Difficulties', value: difficultySummary(beatmapset), inline: true },
+      { name: '🎵 BPM', value: Number.isFinite(bpm) ? String(bpm) : 'Unknown', inline: true },
+      { name: '⏱️ Length', value: mapLength(beatmapset), inline: true },
+      { name: '✅ Nominators', value: mapNominators(beatmapset), inline: true },
     )
-    .setFooter({ text: `Beatmapset #${beatmapset.id}` });
+    .setFooter({ text: `osu! beatmapset • #${beatmapset.id}` });
 
-  const cover = beatmapset.covers?.['cover@2x'] || beatmapset.covers?.cover;
+  const updatedAt = beatmapset.ranked_date || beatmapset.last_updated;
+  if (updatedAt && !Number.isNaN(Date.parse(updatedAt))) embed.setTimestamp(new Date(updatedAt));
+
+  const cover = beatmapset.covers?.['cover@2x']
+    || beatmapset.covers?.cover
+    || beatmapset.covers?.['card@2x']
+    || beatmapset.covers?.card;
   if (cover) embed.setImage(cover);
+  const thumbnail = beatmapset.covers?.['list@2x'] || beatmapset.covers?.list;
+  if (thumbnail) embed.setThumbnail(thumbnail);
   return embed;
 }
 
