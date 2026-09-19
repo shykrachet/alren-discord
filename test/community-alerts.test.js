@@ -4,6 +4,7 @@ const {
   createBnClosedEmbed,
   createBnRequestEmbed,
   createCommunityAlertsService,
+  createMissionEmbed,
   normalizeBnRequests,
   normalizeMissionOpenings,
   shouldDeliverCommunityAlert,
@@ -59,6 +60,9 @@ test('creates a rich BN request card with artwork and preferences', () => {
   assert.equal(embed.image.url, 'https://example.com/banner.jpg');
   assert.equal(embed.thumbnail.url, 'https://a.ppy.sh/123');
   assert.match(embed.author.name, /Mapper/);
+  assert.equal(embed.url, 'https://bn.mappersguild.com/?id=bn-id');
+  assert.match(embed.description, /https:\/\/osu\.ppy\.sh\/users\/123/);
+  assert.match(embed.fields.find((field) => field.name.includes('Request link')).value, /https:\/\/example\.com\/queue/);
   assert.match(embed.fields.find((field) => field.name.includes('Genre')).value, /✅ rock/);
   assert.match(embed.fields.find((field) => field.name.includes('Genre')).value, /❌ country/);
   assert.match(embed.fields.find((field) => field.name.includes('Languages')).value, /english, thai/);
@@ -86,6 +90,19 @@ test('normalizes only mission-open log events', () => {
     openedAt: '2026-09-17T00:00:00Z',
     url: 'https://mappersguild.com/missions',
   }]);
+});
+
+test('creates a linked Mappers Guild mission card', () => {
+  const embed = createMissionEmbed({
+    id: 'mission-id',
+    name: 'New mission',
+    openedAt: '2026-09-17T00:00:00Z',
+  }).toJSON();
+
+  assert.equal(embed.title, '🆕 New Mappers\' Guild mission');
+  assert.equal(embed.url, 'https://mappersguild.com/missions');
+  assert.match(embed.description, /New mission/);
+  assert.equal(embed.timestamp, '2026-09-17T00:00:00.000Z');
 });
 
 test('delivers BN alerts only for the configured mode and always delivers missions', () => {

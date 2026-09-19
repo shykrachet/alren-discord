@@ -4,25 +4,25 @@ const MODE_DEFINITIONS = {
   osu: {
     emojiName: 'alren_mode_osu',
     fallback: '🎯',
-    file: 'mode-osu-small.png',
+    file: 'mode-osu-small@2x.png',
     label: 'osu!',
   },
   taiko: {
     emojiName: 'alren_mode_taiko',
     fallback: '🥁',
-    file: 'mode-taiko-small.png',
+    file: 'mode-taiko-small@2x.png',
     label: 'osu!taiko',
   },
   catch: {
     emojiName: 'alren_mode_fruits',
     fallback: '🍎',
-    file: 'mode-fruits-small.png',
+    file: 'mode-fruits-small@2x.png',
     label: 'osu!catch',
   },
   mania: {
     emojiName: 'alren_mode_mania',
     fallback: '🎹',
-    file: 'mode-mania-small.png',
+    file: 'mode-mania-small@2x.png',
     label: 'osu!mania',
   },
 };
