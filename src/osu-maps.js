@@ -43,11 +43,13 @@ function mapModes(beatmapset) {
 }
 
 function mapNominators(beatmapset) {
-  const users = new Map((beatmapset.related_users || []).map((user) => [String(user.id), user.username]));
-  const names = (beatmapset.current_nominations || [])
+  const users = new Map((beatmapset.related_users || []).map((user) => [String(user.id), user]));
+  const nominators = (beatmapset.current_nominations || [])
     .map((nomination) => users.get(String(nomination.user_id)))
     .filter(Boolean);
-  return [...new Set(names)].join(', ') || 'Not listed';
+  return [...new Map(nominators.map((user) => [String(user.id), user])).values()]
+    .map((user) => `[${user.username}](https://osu.ppy.sh/users/${user.id})`)
+    .join(', ') || 'Not listed';
 }
 
 function difficultySummary(beatmapset) {
@@ -76,6 +78,12 @@ function compactMetadata(value, maxLength = 900) {
   return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text;
 }
 
+function searchableMetadata(metadata, queryKey) {
+  const name = compactMetadata(metadata?.name);
+  if (name === 'Not listed' || metadata?.id == null) return name;
+  return `[${name}](https://osu.ppy.sh/beatmapsets?${queryKey}=${encodeURIComponent(metadata.id)})`;
+}
+
 function createMapEmbed(beatmapset) {
   if (!beatmapset?.id) throw new Error('Cannot create an embed without a beatmapset.');
 
@@ -99,9 +107,8 @@ function createMapEmbed(beatmapset) {
       { name: '⏱️ Length', value: mapLength(beatmapset), inline: true },
       { name: '✅ Nominators', value: mapNominators(beatmapset), inline: false },
       { name: '📀 Source', value: compactMetadata(beatmapset.source), inline: false },
-      { name: '🎸 Genre', value: compactMetadata(beatmapset.genre?.name), inline: true },
-      { name: '🌐 Language', value: compactMetadata(beatmapset.language?.name), inline: true },
-      { name: '🏷️ Mapper Tags', value: compactMetadata(beatmapset.tags), inline: false },
+      { name: '🎸 Genre', value: searchableMetadata(beatmapset.genre, 'g'), inline: true },
+      { name: '🌐 Language', value: searchableMetadata(beatmapset.language, 'l'), inline: true },
     )
     .setFooter({ text: `osu! beatmapset • #${beatmapset.id}` });
 
@@ -181,6 +188,19 @@ function createOsuMapService({
     return Array.isArray(result.beatmapsets) ? result.beatmapsets : [];
   }
 
+  async function getBeatmapset(beatmapset) {
+    const token = await getAccessToken();
+    const response = await fetchImpl(`${OSU_API_URL}/beatmapsets/${beatmapset.id}`, {
+      headers: {
+        accept: 'application/json',
+        authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) throw new Error(`osu! beatmap details failed (${response.status}).`);
+    const details = await response.json();
+    return { ...beatmapset, ...details };
+  }
+
   function normalizeSettings(settings) {
     return {
       channelId: settings?.channel_id || settings?.channelId,
@@ -225,7 +245,8 @@ function createOsuMapService({
       : requestedFilters.status;
     const maps = await searchMaps({ mode: requestedFilters.mode, status: selectedStatus });
     if (!maps.length) throw new Error('No osu! beatmaps matched those filters.');
-    const map = maps[Math.floor(random() * maps.length)];
+    const selectedMap = maps[Math.floor(random() * maps.length)];
+    const map = await getBeatmapset(selectedMap);
     return {
       map,
       filters: { ...requestedFilters, status: selectedStatus },
@@ -259,10 +280,11 @@ function createOsuMapService({
       for (const row of settingsRows || []) {
         const settings = normalizeSettings(row);
         try {
-          const map = await newestMap(settings);
-          if (!map || await store.hasPostedMap(settings.guildId, map.id, map.status)) continue;
+          const mapSummary = await newestMap(settings);
+          if (!mapSummary || await store.hasPostedMap(settings.guildId, mapSummary.id, mapSummary.status)) continue;
+          const map = await getBeatmapset(mapSummary);
           await postMap({ map, settings });
-          await store.markMapPosted(settings.guildId, map.id, map.status);
+          await store.markMapPosted(settings.guildId, mapSummary.id, mapSummary.status);
         } catch (error) {
           console.error(`Beatmap feed failed for server ${settings.guildId}:`, error.message);
         }

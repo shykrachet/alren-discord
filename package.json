@@ -6,7 +6,11 @@
   "scripts": {
     "setup": "node scripts/setup.js",
     "start": "node index.js",
-    "test": "node --test"
+    "test": "node --test",
+    "test:osumap": "node --test test/osu-maps.test.js",
+    "test:community": "node --test test/community-alerts.test.js",
+    "preview:osumap": "node scripts/preview-osumap.js",
+    "preview:community": "node scripts/preview-community.js"
   },
   "repository": {
     "type": "git",

@@ -308,12 +308,100 @@ Confirm that `src/osu-maps.js` exists before running `npm start` again.
 - Give Alren **View Channel** and **Send Messages** in the selected channel.
 - Wait for a future BN opening or mission-opening event; existing public entries are intentionally not posted after a restart.
 
-## Development
+## คู่มือทดสอบและดู Template
 
-Run the offline test suite with:
+คำสั่งในส่วนนี้ต้องรันจากโฟลเดอร์หลักของโปรเจกต์ หลังจากติดตั้ง dependencies ด้วย `npm ci` แล้ว ระบบทดสอบและ preview ใช้ข้อมูลจำลอง จึงไม่เชื่อมต่อ Discord, osu! API, BN, Mappers' Guild หรือ Supabase และไม่ส่งข้อความจริง
+
+### ทดสอบระบบทั้งหมด
+
+ใช้คำสั่งนี้ก่อน deploy ทุกครั้ง:
 
 ```bash
 npm test
 ```
 
-The beatmap tests use mocked osu! and Supabase responses, so they do not post to Discord or modify live data.
+เมื่อทำงานสำเร็จ บรรทัดสรุปด้านล่างต้องแสดง `fail 0` หากมี test ไม่ผ่าน ให้ดูชื่อ test และ error ที่แสดงอยู่ก่อนบรรทัดสรุป
+
+### ทดสอบและดู Template ของ osu! beatmap
+
+รันเฉพาะ test ของ `/osumap` และ automatic beatmap feed:
+
+```bash
+npm run test:osumap
+```
+
+Test ชุดนี้ตรวจสอบว่า:
+
+- ระบบค้นหาแผนที่แล้วดึงรายละเอียด beatmapset เพิ่มจาก osu! API
+- การ์ดแสดง Status, Modes, Difficulties, Nominators, Source, Genre และ Language
+- ไม่มีช่อง `Mapper Tags`
+- ชื่อ Nominator เชื่อมไปยังโปรไฟล์ osu!
+- Genre และ Language เชื่อมไปยังหน้าค้นหา osu! ด้วยตัวกรองที่ถูกต้อง
+
+ดู Discord embed payload ตัวอย่างโดยไม่เรียก API:
+
+```bash
+npm run preview:osumap
+```
+
+ผลลัพธ์เป็น JSON หนึ่งชุดซึ่งมี `title`, `description`, `fields`, `image` และ `thumbnail` เหมือน payload ที่บอทส่งให้ Discord ข้อมูลตัวอย่างแก้ไขได้ที่ [`scripts/preview-osumap.js`](scripts/preview-osumap.js) ส่วน test อยู่ที่ [`test/osu-maps.test.js`](test/osu-maps.test.js)
+
+### ทดสอบและดู Template ของ BN และ Mappers' Guild
+
+รันเฉพาะ test ของ community alerts:
+
+```bash
+npm run test:community
+```
+
+Test ชุดนี้ตรวจสอบว่า:
+
+- สถานะ BN ถูกแปลงเป็น Open, Closed หรือ Unknown อย่างถูกต้อง
+- การ์ด BN Open และ BN Closed แสดงข้อมูล รูป และลิงก์ที่เกี่ยวข้อง
+- ตัวกรอง game mode ส่งแจ้งเตือนให้เซิร์ฟเวอร์ที่ตั้งค่าไว้เท่านั้น
+- การเริ่มระบบครั้งแรกสร้าง baseline โดยไม่ส่งรายการเก่า
+- ระบบแจ้งเฉพาะการเปลี่ยนสถานะ BN และ mission ที่เพิ่งเปิดใหม่
+- การ์ด Mappers' Guild เชื่อมไปยังหน้า Missions
+
+ดู template ทั้งสามแบบโดยไม่เรียก API:
+
+```bash
+npm run preview:community
+```
+
+JSON ที่แสดงแบ่งเป็นสามส่วน:
+
+| Key | Template |
+| --- | --- |
+| `bnOpen` | BN เปิดรับ beatmap requests |
+| `bnClosed` | BN ปิดรับ beatmap requests |
+| `mapperGuildMission` | Mappers' Guild mission เปิดใหม่ |
+
+ข้อมูลตัวอย่างแก้ไขได้ที่ [`scripts/preview-community.js`](scripts/preview-community.js) ส่วน test อยู่ที่ [`test/community-alerts.test.js`](test/community-alerts.test.js)
+
+### วิธีแก้ Template
+
+1. เปิดไฟล์ preview ของระบบที่ต้องการ
+2. แก้เฉพาะข้อมูลจำลอง เช่น ชื่อ, mode, genre, language หรือ preferences โดยไม่ใส่ token และ secret จริง
+3. รันคำสั่ง `preview:*` เพื่อดู payload ใหม่
+4. รันคำสั่ง `test:*` ของระบบนั้น
+5. รัน `npm test` อีกครั้งก่อน commit หรือ deploy
+
+ไฟล์ preview ใช้สำหรับข้อมูลตัวอย่างเท่านั้น การเปลี่ยนรูปแบบการ์ดจริงต้องแก้ที่ [`src/osu-maps.js`](src/osu-maps.js) หรือ [`src/community-alerts.js`](src/community-alerts.js) แล้วปรับ test ให้ตรงกับพฤติกรรมที่ต้องการ
+
+### Windows PowerShell รัน `npm` ไม่ได้
+
+ถ้า PowerShell แสดงข้อความว่า `npm.ps1 cannot be loaded because running scripts is disabled` ให้ใช้ `npm.cmd` แทน เช่น:
+
+```powershell
+npm.cmd test
+npm.cmd run preview:osumap
+npm.cmd run preview:community
+```
+
+### Checklist ก่อน deploy
+
+- `npm test` แสดง `fail 0`
+- `npm run preview:osumap` แสดงข้อมูลและลิงก์ครบ
+- `npm run preview:community` แสดง `bnOpen`, `bnClosed` และ `mapperGuildMission`
+- ไม่มี token, secret หรือข้อมูลส่วนตัวจริงอยู่ในไฟล์ template
