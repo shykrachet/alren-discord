@@ -8,9 +8,11 @@ const {
 } = require('./src/config');
 const { createChatService } = require('./src/chat');
 const {
-  createBnRequestEmbed, createCommunityAlertsService, createMissionEmbed, shouldDeliverCommunityAlert,
+  createBnClosedEmbed, createBnRequestEmbed, createCommunityAlertsService, createMissionEmbed,
+  shouldDeliverCommunityAlert,
 } = require('./src/community-alerts');
 const { createMessageHandler } = require('./src/message-handler');
+const { syncApplicationModeEmojis } = require('./src/mode-icons');
 const { createMapEmbed, createOsuMapService } = require('./src/osu-maps');
 const { createOsuVerificationService } = require('./src/osu-verification');
 const { createInteractionHandler, registerSlashCommands } = require('./src/slash-commands');
@@ -41,6 +43,12 @@ const osuVerification = createOsuVerificationService({
 bot.once('clientReady', async () => {
   console.log(`online: ${bot.user.tag}`);
   if (!chat) console.warn('Chat is disabled: add OPENAI_API_KEY to .env');
+  try {
+    const modeIcons = await syncApplicationModeEmojis(bot.application);
+    console.log(`mode icons ready: ${modeIcons.ready} (${modeIcons.created} created)`);
+  } catch (error) {
+    console.warn('Could not prepare application mode emojis; using Unicode fallbacks:', error.message);
+  }
   try {
     await registerSlashCommands({ client: bot, token: DISCORD_TOKEN });
   } catch (error) {
@@ -73,7 +81,9 @@ bot.once('clientReady', async () => {
           }
           const embed = alert.type === 'bn-open'
             ? createBnRequestEmbed(alert.entry)
-            : createMissionEmbed(alert.mission);
+            : alert.type === 'bn-closed'
+              ? createBnClosedEmbed(alert.entry)
+              : createMissionEmbed(alert.mission);
           await channel.send({ embeds: [embed] });
         } catch (error) {
           console.error(`Community alert delivery failed for server ${settings.guild_id}:`, error.message);

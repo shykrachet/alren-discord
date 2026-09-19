@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
+  createBnClosedEmbed,
   createBnRequestEmbed,
   createCommunityAlertsService,
   normalizeBnRequests,
@@ -63,6 +64,16 @@ test('creates a rich BN request card with artwork and preferences', () => {
   assert.match(embed.fields.find((field) => field.name.includes('Languages')).value, /english, thai/);
 });
 
+test('creates a red BN closed card with the same profile artwork', () => {
+  const [entry] = normalizeBnRequests(bnResponse('closed'));
+  const embed = createBnClosedEmbed(entry).toJSON();
+
+  assert.equal(embed.color, 0xef4444);
+  assert.match(embed.title, /closed/i);
+  assert.equal(embed.image.url, 'https://example.com/banner.jpg');
+  assert.equal(embed.fields.find((field) => field.name.includes('Status')).value, '**Closed**');
+});
+
 test('normalizes only mission-open log events', () => {
   const missions = normalizeMissionOpenings(missionResponse([
     { id: '1', category: 'mission', action: '"New mission" opened', createdAt: '2026-09-17T00:00:00Z' },
@@ -85,6 +96,9 @@ test('delivers BN alerts only for the configured mode and always delivers missio
   assert.equal(shouldDeliverCommunityAlert({
     type: 'bn-open', entry: { mode: 'osu' },
   }, settings), false);
+  assert.equal(shouldDeliverCommunityAlert({
+    type: 'bn-closed', entry: { mode: 'mania' },
+  }, settings), true);
   assert.equal(shouldDeliverCommunityAlert({ type: 'mission-open' }, settings), true);
   assert.equal(shouldDeliverCommunityAlert({ type: 'mission-open' }, {
     bn_mode_filter: 'all',
@@ -96,9 +110,13 @@ test('first check creates a baseline and the next check emits only transitions',
   let missionCalls = 0;
   const fetchImpl = async (url) => {
     const value = String(url).includes('bn.mappersguild.com')
-      ? [bnResponse('closed'), bnResponse('open')][bnCalls++]
+      ? [bnResponse('closed'), bnResponse('open'), bnResponse('closed')][bnCalls++]
       : [
         missionResponse([{ id: 'old', category: 'mission', action: '"Old" opened' }]),
+        missionResponse([
+          { id: 'new', category: 'mission', action: '"New" opened' },
+          { id: 'old', category: 'mission', action: '"Old" opened' },
+        ]),
         missionResponse([
           { id: 'new', category: 'mission', action: '"New" opened' },
           { id: 'old', category: 'mission', action: '"Old" opened' },
@@ -114,6 +132,8 @@ test('first check creates a baseline and the next check emits only transitions',
   await service.checkNow((alert) => alerts.push(alert));
   assert.deepEqual(alerts.map((alert) => alert.type), ['bn-open', 'mission-open']);
   assert.equal(alerts[1].mission.name, 'New');
+  await service.checkNow((alert) => alerts.push(alert));
+  assert.deepEqual(alerts.map((alert) => alert.type), ['bn-open', 'mission-open', 'bn-closed']);
 });
 
 test('API handler returns the normalized public snapshot', async () => {

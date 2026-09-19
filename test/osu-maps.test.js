@@ -20,7 +20,11 @@ function map(id, status = 'ranked') {
       list: 'https://example.com/list.jpg',
     },
     current_nominations: [{ user_id: 42 }],
+    genre: { name: 'Electronic' },
+    language: { name: 'Instrumental' },
     related_users: [{ id: 42, username: 'Nominator' }],
+    source: '4 Digit osu!mania World Cup 4',
+    tags: 'featured artist original song electronic instrumental',
   };
 }
 
@@ -44,11 +48,27 @@ test('createMapEmbed presents the beatmap metadata', () => {
   const embed = createMapEmbed(map(123)).toJSON();
   assert.equal(embed.title, 'Artist — Title');
   assert.equal(embed.url, 'https://osu.ppy.sh/beatmapsets/123');
-  assert.equal(embed.fields.find((field) => field.name.includes('Modes')).value, 'osu!, osu!mania');
+  assert.equal(embed.fields.find((field) => field.name.includes('Status')).value, '⏫ Ranked');
+  assert.equal(embed.fields.find((field) => field.name.includes('Modes')).value, '🎯 osu!, 🎹 osu!mania');
   assert.equal(embed.fields.find((field) => field.name.includes('Difficulties')).value, '2.50★ – 5.75★ • 2 difficulties');
   assert.equal(embed.fields.find((field) => field.name.includes('Nominators')).value, 'Nominator');
+  assert.equal(embed.fields.find((field) => field.name.includes('Source')).value, '4 Digit osu!mania World Cup 4');
+  assert.equal(embed.fields.find((field) => field.name.includes('Genre')).value, 'Electronic');
+  assert.equal(embed.fields.find((field) => field.name.includes('Language')).value, 'Instrumental');
+  assert.match(embed.fields.find((field) => field.name.includes('Mapper Tags')).value, /featured artist/);
   assert.equal(embed.image.url, 'https://example.com/cover.jpg');
   assert.equal(embed.thumbnail.url, 'https://example.com/list.jpg');
+});
+
+test('uses the requested Discord status icons', () => {
+  const ranked = createMapEmbed(map(1, 'ranked')).toJSON();
+  const qualified = createMapEmbed(map(2, 'qualified')).toJSON();
+  const loved = createMapEmbed(map(3, 'loved')).toJSON();
+  const status = (embed) => embed.fields.find((field) => field.name.includes('Status')).value;
+
+  assert.equal(status(ranked), '⏫ Ranked');
+  assert.equal(status(qualified), '✅ Qualified');
+  assert.equal(status(loved), '❤️ Loved');
 });
 
 test('getRandomMap uses stored filters and authenticates with osu!', async () => {

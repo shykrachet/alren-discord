@@ -196,7 +196,7 @@ After updating the bot, reapply your project schema in Supabase SQL Editor so th
 
 Alren can monitor two public community data sources:
 
-- BN request status from `bn.mappersguild.com`. A notification is sent when a BN changes from Closed or Unknown to Open.
+- BN request status from `bn.mappersguild.com`. A green notification is sent when a BN opens requests, and a red notification is sent when that BN later closes them.
 - Mappers' Guild activity logs. A notification is sent when a new mission is opened.
 
 Run [`supabase/community_alert_settings.sql`](supabase/community_alert_settings.sql) in Supabase SQL Editor once. Then, in Discord, an administrator with **Manage Server** can configure the alert destination and BN mode:

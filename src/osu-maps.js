@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const { OSU_CLIENT_ID, OSU_CLIENT_SECRET } = require('./config');
+const { modeLabel } = require('./mode-icons');
 
 const OSU_API_URL = 'https://osu.ppy.sh/api/v2';
 const OSU_TOKEN_URL = 'https://osu.ppy.sh/oauth/token';
@@ -11,22 +12,15 @@ const MODES = {
   catch: 2,
   mania: 3,
 };
-const MODE_NAMES = {
-  osu: 'osu!',
-  taiko: 'osu!taiko',
-  fruits: 'osu!catch',
-  catch: 'osu!catch',
-  mania: 'osu!mania',
-};
 const STATUS_COLORS = {
   ranked: 0x66ccff,
   qualified: 0xffcc22,
   loved: 0xff66aa,
 };
 const STATUS_ICONS = {
-  ranked: '💎',
-  qualified: '🏅',
-  loved: '💗',
+  ranked: '⏫',
+  qualified: '✅',
+  loved: '❤️',
 };
 
 function titleCase(value) {
@@ -45,7 +39,7 @@ function validateMode(mode) {
 
 function mapModes(beatmapset) {
   const modes = new Set((beatmapset.beatmaps || []).map((beatmap) => beatmap.mode));
-  return [...modes].map((mode) => MODE_NAMES[mode] || mode).join(', ') || 'Unknown';
+  return [...modes].map(modeLabel).join(', ') || 'Unknown';
 }
 
 function mapNominators(beatmapset) {
@@ -76,6 +70,12 @@ function mapLength(beatmapset) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
+function compactMetadata(value, maxLength = 900) {
+  const text = String(value || '').trim().replace(/\s+/g, ' ');
+  if (!text) return 'Not listed';
+  return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text;
+}
+
 function createMapEmbed(beatmapset) {
   if (!beatmapset?.id) throw new Error('Cannot create an embed without a beatmapset.');
 
@@ -97,7 +97,11 @@ function createMapEmbed(beatmapset) {
       { name: '⭐ Difficulties', value: difficultySummary(beatmapset), inline: true },
       { name: '🎵 BPM', value: Number.isFinite(bpm) ? String(bpm) : 'Unknown', inline: true },
       { name: '⏱️ Length', value: mapLength(beatmapset), inline: true },
-      { name: '✅ Nominators', value: mapNominators(beatmapset), inline: true },
+      { name: '✅ Nominators', value: mapNominators(beatmapset), inline: false },
+      { name: '📀 Source', value: compactMetadata(beatmapset.source), inline: false },
+      { name: '🎸 Genre', value: compactMetadata(beatmapset.genre?.name), inline: true },
+      { name: '🌐 Language', value: compactMetadata(beatmapset.language?.name), inline: true },
+      { name: '🏷️ Mapper Tags', value: compactMetadata(beatmapset.tags), inline: false },
     )
     .setFooter({ text: `osu! beatmapset • #${beatmapset.id}` });
 
