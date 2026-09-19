@@ -264,7 +264,6 @@ Existing long-form slash commands and `!` commands remain available for compatib
 | `/alrenclear`, `!alrenclear`, or `!reset` | Clear your private Alren chat memory in the current channel. |
 | `/alrenhelp` or `!alrenhelp` | Open a dropdown to choose the styled Thai or English command guide. |
 | `/ping` or `!ping` | Check whether Alren is online. |
-| `/version`, `!version`, or `!ver` | Show the bot version. |
 | `/verify-role role:@role` or `!verify-role @role` | Set the role awarded after osu! verification. Requires Manage Server. |
 | `/verify-role-status` or `!verify-role-status` | Show the configured verification role. |
 | `/osuverify [osu_user_id]` or `!osuverify [osu_user_id]` | Send an OAuth button by DM and automatically detect the signed-in osu! account. |

@@ -6,7 +6,6 @@ const {
   StringSelectMenuOptionBuilder,
 } = require('discord.js');
 const { createMapEmbed } = require('./osu-maps');
-const { formatVersion } = require('./version');
 
 const ALREN_COLOR = 0xff66aa;
 const SUCCESS_COLOR = 0x22c55e;
@@ -46,7 +45,7 @@ function createHelpEmbed(language = 'th') {
         { name: '✅ osu! verification', value: '`/verify` — sign in with osu! OAuth automatically\n`/osuverify-status` or `!osuverify-status`' },
         { name: '🎵 Beatmaps', value: '`/map` — post a random beatmap with cover artwork\n`/osumap-settings` or `!osumap-settings [status] [mode]`' },
         { name: '🛠️ Server setup', value: '`/setup` — configure Verify, Beatmap, and BN alerts\nExisting setup commands remain available' },
-        { name: 'ℹ️ Utilities', value: '`/help language:English` or `!alrenhelp en`\n`/ping` or `!ping` · `/version` or `!version`' },
+        { name: 'ℹ️ Utilities', value: '`/help language:English` or `!alrenhelp en`\n`/ping` or `!ping`' },
       )
       .setFooter({ text: 'Slash replies are private • Use /alrenhelp language:ไทย for Thai' });
   }
@@ -58,7 +57,7 @@ function createHelpEmbed(language = 'th') {
       { name: '✅ ยืนยันบัญชี osu!', value: '`/verify` — กดปุ่ม OAuth แล้วระบบดึงบัญชีให้อัตโนมัติ\n`/osuverify-status` หรือ `!osuverify-status`' },
       { name: '🎵 Beatmap', value: '`/map` — สุ่ม beatmap พร้อมรูปปก\n`/osumap-settings` หรือ `!osumap-settings [status] [mode]`' },
       { name: '🛠️ ตั้งค่าเซิร์ฟเวอร์', value: '`/setup` — ตั้ง Verify, Beatmap และ BN ในคำสั่งเดียว\nคำสั่งตั้งค่าแบบเดิมยังใช้ได้' },
-      { name: 'ℹ️ เครื่องมือ', value: '`/help language:ไทย` หรือ `!alrenhelp th`\n`/ping` หรือ `!ping` · `/version` หรือ `!version`' },
+      { name: 'ℹ️ เครื่องมือ', value: '`/help language:ไทย` หรือ `!alrenhelp th`\n`/ping` หรือ `!ping`' },
     )
     .setFooter({ text: 'คำตอบ Slash เป็นส่วนตัว • ใช้ /alrenhelp language:English สำหรับภาษาอังกฤษ' });
 }
@@ -109,7 +108,7 @@ function formatHelp() {
     '`/osumap` or `!osumap [status] [mode]` — random beatmap',
     '`/osumap-settings` or `!osumap-settings [status] [mode]` — beatmap feed',
     '`/community-alert-settings` or `!community-alert-settings #channel [mode]` — community alerts',
-    '`/ping` or `!ping` · `/version` or `!version`',
+    '`/ping` or `!ping`',
   ].join('\n');
 }
 
@@ -164,11 +163,6 @@ function createMessageHandler({ bot, chat, osuMaps, osuVerification, store }) {
 
     if (command === 'ping') {
       await message.reply({ embeds: [createStatusEmbed('🏓 Pong', `Latency: **${bot.ws.ping}ms**`, SUCCESS_COLOR)] });
-      return;
-    }
-
-    if (command === 'version' || command === 'ver') {
-      await message.reply({ embeds: [createStatusEmbed('ℹ️ Alren version', formatVersion())] });
       return;
     }
 
