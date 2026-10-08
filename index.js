@@ -95,7 +95,7 @@ bot.once('clientReady', async () => {
       }
     });
   } else {
-    console.warn('Community notifications are disabled: configure Supabase, then use /community-alert-settings.');
+    console.warn('Community notifications are disabled: configure Supabase, then use /setup alerts.');
   }
 });
 
