@@ -46,14 +46,6 @@ const CLEAR_CHAT_COMMAND = new SlashCommandBuilder()
   .setName('alrenclear')
   .setDescription('Clear your private Alren chat memory in this channel.');
 
-const HELP_COMMAND = new SlashCommandBuilder()
-  .setName('alrenhelp')
-  .setDescription('เปิดคู่มือคำสั่ง Alren แบบส่วนตัว เลือกภาษาไทยหรือ English')
-  .addStringOption((option) => option
-    .setName('language')
-    .setDescription('เลือกภาษาของคู่มือ / Choose guide language')
-    .addChoices(...HELP_LANGUAGE_CHOICES));
-
 const PING_COMMAND = new SlashCommandBuilder()
   .setName('ping')
   .setDescription('Check whether Alren is online.');
@@ -65,18 +57,6 @@ const QUICK_HELP_COMMAND = new SlashCommandBuilder()
     .setName('language')
     .setDescription('เลือกภาษาของคู่มือ / Choose guide language')
     .addChoices(...HELP_LANGUAGE_CHOICES));
-
-const OSU_VERIFY_COMMAND = new SlashCommandBuilder()
-  .setName('osuverify')
-  .setDescription('Verify an osu! account privately.')
-  .addStringOption((option) => option
-    .setName('osu_user_id')
-    .setDescription('Optional: the number from your osu! profile URL')
-    .setRequired(false));
-
-const OSU_VERIFY_STATUS_COMMAND = new SlashCommandBuilder()
-  .setName('osuverify-status')
-  .setDescription('Show your verified osu! account privately.');
 
 const VERIFY_STATUS_COMMAND = new SlashCommandBuilder()
   .setName('verify-status')
@@ -90,50 +70,6 @@ const QUICK_VERIFY_COMMAND = new SlashCommandBuilder()
     .setDescription('ไม่ใส่ก็ได้ ระบบจะตรวจบัญชีจาก osu! ให้อัตโนมัติ')
     .setRequired(false));
 
-const VERIFY_SETTINGS_COMMAND = new SlashCommandBuilder()
-  .setName('verify-setting')
-  .setDescription('Configure osu! verification role and result channel privately.')
-  .addRoleOption((option) => option
-    .setName('role')
-    .setDescription('The role verified members receive')
-    .setRequired(false))
-  .addChannelOption((option) => option
-    .setName('channel')
-    .setDescription('Channel that receives verification profile summaries')
-    .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement));
-
-const OSU_MAP_COMMAND = new SlashCommandBuilder()
-  .setName('osumap')
-  .setDescription('Post a random osu! beatmap in this channel.')
-  .addStringOption((option) => option
-    .setName('status')
-    .setDescription('Temporarily choose a beatmap status')
-    .addChoices(...MAP_STATUS_CHOICES))
-  .addStringOption((option) => option
-    .setName('mode')
-    .setDescription('Temporarily choose a game mode')
-    .addChoices(...MAP_MODE_CHOICES));
-
-const OSU_MAP_SETTINGS_COMMAND = new SlashCommandBuilder()
-  .setName('osumap-settings')
-  .setDescription('Configure the osu! beatmap feed for this server privately.')
-  .addStringOption((option) => option
-    .setName('status')
-    .setDescription('Default beatmap status')
-    .addChoices(...MAP_STATUS_CHOICES))
-  .addStringOption((option) => option
-    .setName('mode')
-    .setDescription('Default game mode')
-    .addChoices(...MAP_MODE_CHOICES))
-  .addChannelOption((option) => option
-    .setName('channel')
-    .setDescription('Channel that receives automatic beatmap posts')
-    .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement));
-
-const OSU_MAP_STATUS_COMMAND = new SlashCommandBuilder()
-  .setName('osumap-status')
-  .setDescription('Show the configured osu! beatmap feed settings privately.');
-
 const QUICK_MAP_COMMAND = new SlashCommandBuilder()
   .setName('map')
   .setDescription('สุ่ม beatmap พร้อมรูปปกลงในห้องนี้')
@@ -146,65 +82,57 @@ const QUICK_MAP_COMMAND = new SlashCommandBuilder()
     .setDescription('โหมดเกม (ไม่ใส่จะใช้ค่าที่เซิร์ฟเวอร์ตั้งไว้)')
     .addChoices(...MAP_MODE_CHOICES));
 
-const COMMUNITY_ALERT_SETTINGS_COMMAND = new SlashCommandBuilder()
-  .setName('community-alert-settings')
-  .setDescription('Configure BN and Mappers’ Guild alerts privately.')
-  .addChannelOption((option) => option
-    .setName('channel')
-    .setDescription('Channel that receives alerts')
-    .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
-  .addStringOption((option) => option
-    .setName('bn_mode')
-    .setDescription('BN request mode to notify about')
-    .addChoices(...BN_MODE_CHOICES));
-
 const SETUP_COMMAND = new SlashCommandBuilder()
   .setName('setup')
   .setDescription('ตั้งค่า Verify, Beatmap และ BN alerts ในคำสั่งเดียว (สำหรับแอดมิน)')
-  .addRoleOption((option) => option
-    .setName('verify_role')
-    .setDescription('ยศที่จะมอบให้สมาชิกหลัง Verify สำเร็จ'))
-  .addChannelOption((option) => option
-    .setName('verify_channel')
-    .setDescription('ห้องสำหรับแสดงข้อมูลหลัง Verify สำเร็จ')
-    .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
-  .addChannelOption((option) => option
-    .setName('beatmap_channel')
-    .setDescription('ห้องสำหรับส่ง beatmap อัตโนมัติ')
-    .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
-  .addStringOption((option) => option
-    .setName('map_status')
-    .setDescription('สถานะ beatmap เริ่มต้น')
-    .addChoices(...MAP_STATUS_CHOICES))
-  .addStringOption((option) => option
-    .setName('map_mode')
-    .setDescription('โหมด beatmap เริ่มต้น')
-    .addChoices(...MAP_MODE_CHOICES))
-  .addChannelOption((option) => option
-    .setName('alerts_channel')
-    .setDescription('ห้องสำหรับแจ้งเตือน BN และ Mappers’ Guild')
-    .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
-  .addStringOption((option) => option
-    .setName('bn_mode')
-    .setDescription('โหมด BN ที่ต้องการแจ้งเตือน')
-    .addChoices(...BN_MODE_CHOICES));
+  .addSubcommand((subcommand) => subcommand
+    .setName('status')
+    .setDescription('ดูค่าที่ตั้งไว้ทั้งหมดของ Alren'))
+  .addSubcommand((subcommand) => subcommand
+    .setName('verify')
+    .setDescription('ตั้งค่า role และห้องแสดงข้อมูลหลัง Verify')
+    .addRoleOption((option) => option
+      .setName('role')
+      .setDescription('ยศที่จะมอบให้สมาชิกหลัง Verify สำเร็จ'))
+    .addChannelOption((option) => option
+      .setName('channel')
+      .setDescription('ห้องสำหรับแสดงข้อมูลหลัง Verify สำเร็จ')
+      .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)))
+  .addSubcommand((subcommand) => subcommand
+    .setName('beatmap')
+    .setDescription('ตั้งค่า beatmap feed อัตโนมัติ')
+    .addChannelOption((option) => option
+      .setName('channel')
+      .setDescription('ห้องสำหรับส่ง beatmap อัตโนมัติ')
+      .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+    .addStringOption((option) => option
+      .setName('status')
+      .setDescription('สถานะ beatmap เริ่มต้น')
+      .addChoices(...MAP_STATUS_CHOICES))
+    .addStringOption((option) => option
+      .setName('mode')
+      .setDescription('โหมด beatmap เริ่มต้น')
+      .addChoices(...MAP_MODE_CHOICES)))
+  .addSubcommand((subcommand) => subcommand
+    .setName('alerts')
+    .setDescription('ตั้งค่า BN และ Mappers’ Guild alerts')
+    .addChannelOption((option) => option
+      .setName('channel')
+      .setDescription('ห้องสำหรับแจ้งเตือน BN และ Mappers’ Guild')
+      .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+    .addStringOption((option) => option
+      .setName('bn_mode')
+      .setDescription('โหมด BN ที่ต้องการแจ้งเตือน')
+      .addChoices(...BN_MODE_CHOICES)));
 
 const COMMANDS = [
   CHAT_COMMAND.toJSON(),
   CLEAR_CHAT_COMMAND.toJSON(),
-  HELP_COMMAND.toJSON(),
   PING_COMMAND.toJSON(),
   QUICK_HELP_COMMAND.toJSON(),
-  OSU_VERIFY_COMMAND.toJSON(),
-  OSU_VERIFY_STATUS_COMMAND.toJSON(),
   VERIFY_STATUS_COMMAND.toJSON(),
   QUICK_VERIFY_COMMAND.toJSON(),
-  VERIFY_SETTINGS_COMMAND.toJSON(),
-  OSU_MAP_COMMAND.toJSON(),
-  OSU_MAP_SETTINGS_COMMAND.toJSON(),
-  OSU_MAP_STATUS_COMMAND.toJSON(),
   QUICK_MAP_COMMAND.toJSON(),
-  COMMUNITY_ALERT_SETTINGS_COMMAND.toJSON(),
   SETUP_COMMAND.toJSON(),
 ];
 const DEFAULT_DELETE_AFTER_SECONDS = 300;
@@ -265,12 +193,12 @@ function createMapStatusEmbed(map) {
     .setTitle('🎵 osu! beatmap feed settings')
     .setDescription(configured
       ? 'Automatic beatmap feed is configured for this server.'
-      : 'Automatic beatmap feed is not configured yet. Use `/setup` or `/osumap-settings`.')
+      : 'Automatic beatmap feed is not configured yet. Use `/setup beatmap`.')
     .addFields(
       { name: '📣 Channel', value: map?.channel_id ? `<#${map.channel_id}>` : 'Not configured', inline: true },
       { name: '🔎 Filters', value: describeFilters({ mode: map?.mode_filter || 'any', status: map?.status_filter || 'ranked' }), inline: true },
     )
-    .setFooter({ text: 'Configure with /setup or /osumap-settings' })
+    .setFooter({ text: 'Configure with /setup beatmap' })
     .setTimestamp();
 }
 
@@ -387,55 +315,62 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
 
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       try {
-        const role = interaction.options.getRole('verify_role');
-        const verifyChannel = interaction.options.getChannel('verify_channel');
-        const beatmapChannel = interaction.options.getChannel('beatmap_channel');
-        const mapStatus = interaction.options.getString('map_status');
-        const mapMode = interaction.options.getString('map_mode');
-        const alertsChannel = interaction.options.getChannel('alerts_channel');
-        const bnMode = interaction.options.getString('bn_mode');
-        const hasVerifyUpdate = Boolean(role || verifyChannel);
-        const hasMapUpdate = Boolean(beatmapChannel || mapStatus || mapMode);
-        const hasAlertUpdate = Boolean(alertsChannel || bnMode);
-        const updated = Boolean(hasVerifyUpdate || hasMapUpdate || hasAlertUpdate);
-
+        const section = interaction.options.getSubcommand(false) || 'status';
+        let updated = false;
         let currentVerify = await store.getVerificationSettings(interaction.guildId);
-        if (hasVerifyUpdate) {
-          currentVerify = await osuVerification.configureVerificationSettings(interaction.guild, {
-            channel: verifyChannel,
-            role,
-          });
-          currentVerify = {
-            channel_id: currentVerify.channelId,
-            role_id: currentVerify.roleId,
-          };
-        }
-
         let currentMap = await store.getMapSettings(interaction.guildId);
-        if (hasMapUpdate) {
-          currentMap = await osuMaps.configureFeed({
-            channelId: beatmapChannel?.id || currentMap?.channel_id || interaction.channelId,
-            guildId: interaction.guildId,
-            mode: mapMode || currentMap?.mode_filter || 'any',
-            status: mapStatus || currentMap?.status_filter || 'ranked',
-          });
-          currentMap = {
-            channel_id: currentMap.channelId,
-            mode_filter: currentMap.mode,
-            status_filter: currentMap.status,
-          };
+        let currentAlerts = await store.getCommunityAlertSettings(interaction.guildId);
+
+        if (section === 'verify') {
+          const role = interaction.options.getRole('role');
+          const verifyChannel = interaction.options.getChannel('channel');
+          if (role || verifyChannel) {
+            currentVerify = await osuVerification.configureVerificationSettings(interaction.guild, {
+              channel: verifyChannel,
+              role,
+            });
+            currentVerify = {
+              channel_id: currentVerify.channelId,
+              role_id: currentVerify.roleId,
+            };
+            updated = true;
+          }
         }
 
-        let currentAlerts = await store.getCommunityAlertSettings(interaction.guildId);
-        if (hasAlertUpdate) {
-          currentAlerts = {
-            channel_id: alertsChannel?.id || currentAlerts?.channel_id || interaction.channelId,
-            bn_mode_filter: bnMode || currentAlerts?.bn_mode_filter || 'all',
-          };
-          await store.saveCommunityAlertSettings(interaction.guildId, {
-            channelId: currentAlerts.channel_id,
-            bnMode: currentAlerts.bn_mode_filter,
-          });
+        if (section === 'beatmap') {
+          const beatmapChannel = interaction.options.getChannel('channel');
+          const mapStatus = interaction.options.getString('status');
+          const mapMode = interaction.options.getString('mode');
+          if (beatmapChannel || mapStatus || mapMode) {
+            currentMap = await osuMaps.configureFeed({
+              channelId: beatmapChannel?.id || currentMap?.channel_id || interaction.channelId,
+              guildId: interaction.guildId,
+              mode: mapMode || currentMap?.mode_filter || 'any',
+              status: mapStatus || currentMap?.status_filter || 'ranked',
+            });
+            currentMap = {
+              channel_id: currentMap.channelId,
+              mode_filter: currentMap.mode,
+              status_filter: currentMap.status,
+            };
+            updated = true;
+          }
+        }
+
+        if (section === 'alerts') {
+          const alertsChannel = interaction.options.getChannel('channel');
+          const bnMode = interaction.options.getString('bn_mode');
+          if (alertsChannel || bnMode) {
+            currentAlerts = {
+              channel_id: alertsChannel?.id || currentAlerts?.channel_id || interaction.channelId,
+              bn_mode_filter: bnMode || currentAlerts?.bn_mode_filter || 'all',
+            };
+            await store.saveCommunityAlertSettings(interaction.guildId, {
+              channelId: currentAlerts.channel_id,
+              bnMode: currentAlerts.bn_mode_filter,
+            });
+            updated = true;
+          }
         }
 
         await interaction.editReply({
@@ -489,7 +424,7 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
         const channelId = selectedChannel?.id || current?.channel_id;
         const bnMode = selectedMode || current?.bn_mode_filter || 'all';
         if (!channelId) {
-          await interaction.editReply('Select a channel the first time, for example `/community-alert-settings channel:#alerts`.');
+          await interaction.editReply('Select a channel the first time, for example `/setup alerts channel:#alerts`.');
         } else if (!selectedChannel && !selectedMode) {
           await interaction.editReply(`Community alerts are configured for <#${channelId}>. BN requests: **${describeBnMode(bnMode)}**. New Mappers’ Guild missions: **all missions**.`);
         } else {
@@ -579,7 +514,7 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
           mode,
           status,
         });
-        await interaction.editReply(`Automatic beatmap feed enabled in <#${channelId}>: **${describeFilters(settings)}**. New maps will be posted there on the next check (up to 15 minutes by default).`);
+        await interaction.editReply(`Automatic beatmap feed enabled in <#${channelId}>: **${describeFilters(settings)}**. New maps will be posted there on the next realtime check.`);
       } catch (error) {
         console.error('Beatmap settings failed:', error.message);
         await interaction.editReply(commandError('I could not save the beatmap feed settings.', error));

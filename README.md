@@ -7,14 +7,14 @@ Alren is a Discord bot for private AI chat, osu! account verification, random be
 Use this after the bot has its `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and Discord token configured:
 
 1. In Supabase **SQL Editor**, run [`supabase/community_alert_settings.sql`](supabase/community_alert_settings.sql).
-2. Restart Alren with `npm start` (or redeploy it on Railway). The bot registers the command when it connects.
+2. Restart Alren with `npm start` (or redeploy it on Railway). The bot registers `/setup` when it connects.
 3. In Discord, a member with **Manage Server** runs:
 
    ```text
-   /community-alert-settings channel:#alerts bn_mode:Standard (osu!)
+   /setup alerts channel:#alerts bn_mode:Standard (osu!)
    ```
 
-4. Confirm the saved configuration privately with `/community-alert-settings`.
+4. Confirm the saved configuration privately with `/setup status`.
 
 Alren records the current public state at startup and only posts later BN openings or newly opened Mappers' Guild missions. There is no `COMMUNITY_ALERT_CHANNEL_ID` environment variable: the channel and BN mode are stored per Discord server.
 
@@ -131,17 +131,16 @@ Use `/alren` or `!alren <message>` to chat with Alren. Mentioning the bot with a
 - Slash replies are ephemeral. Prefix and mention replies are sent by DM so the conversation stays private.
 - Slash replies delete automatically after five minutes.
 - Use `/alrenclear`, `!alrenclear`, or `!reset` to clear your private chat memory in the current channel.
-- Use `/help` or `/alrenhelp` to open the private Discord help card. It includes a button to the full web command guide: [alrenbot.xyz/commands](https://www.alrenbot.xyz/commands).
+- Use `/help` or `!alrenhelp` to open the private Discord help card. It includes a button to the full web command guide: [alrenbot.xyz/commands](https://www.alrenbot.xyz/commands).
 
 ## osu! verification
 
 ### For server administrators
 
-Use `/setup` as the main admin panel, or `/verify-setting` when you only want to change verification:
+Use `/setup` as the main admin panel:
 
 ```text
-/setup verify_role:@Verified verify_channel:#verify-log
-/verify-setting role:@Verified channel:#verify-log
+/setup verify role:@Verified channel:#verify-log
 ```
 
 The verified role is given after successful OAuth. The verification channel receives a public profile summary after each successful verification. The Alren role must be above the selected role in **Server Settings → Roles**.
@@ -151,7 +150,7 @@ The verified role is given after successful OAuth. The verification channel rece
 1. Run either command in the Discord server:
 
 ```text
-/osuverify
+/verify
 !osuverify
 ```
 
@@ -159,28 +158,28 @@ The verified role is given after successful OAuth. The verification channel rece
 3. Open the link and sign in to osu!. Alren detects the account ID and username automatically.
 4. Alren gives the configured role, updates your Discord nickname to your osu! username when Discord allows it, and sends a profile summary by DM. The completion card includes your osu! name, avatar/cover artwork, preferred rank mode, global rank, country rank, country, and a direct profile link.
 
-When a new member joins a server that has a verification role configured, Alren automatically sends the same private OAuth onboarding message. Verification links last for 10 minutes and are tied to the Discord member who requested or received them. An optional osu! ID may still be supplied to `/osuverify` or `!osuverify` when the account should be preselected and checked before OAuth.
+When a new member joins a server that has a verification role configured, Alren automatically sends the same private OAuth onboarding message. Verification links last for 10 minutes and are tied to the Discord member who requested or received them. An optional osu! ID may still be supplied to `/verify` or `!osuverify` when the account should be preselected and checked before OAuth.
 
 > Discord only lets bots manage roles and nicknames below the bot's highest role. If Alren cannot rename someone, verification still succeeds and only the nickname update is skipped. If Alren cannot assign the configured role, move Alren's bot role above the verification role in **Server Settings → Roles**.
 
 ## osu! beatmap feed
 
-`/osumap` posts a random beatmap publicly in the current channel. Each post shows the song title, artist, mapper, Ranked/Qualified/Loved status, available game modes, nominators, cover image, and an osu! link.
+`/map` posts a random beatmap publicly in the current channel. Each post shows the song title, artist, mapper, Ranked/Qualified/Loved status, available game modes, nominators, cover image, and an osu! link.
 
-Without saved server settings, `/osumap` defaults to `ranked` and `any`. Anyone can temporarily override either filter:
+Without saved server settings, `/map` defaults to `ranked` and `any`. Anyone can temporarily override either filter:
 
 ```text
-/osumap status:qualified mode:mania
+/map status:qualified mode:mania
 ```
 
 Available status filters are `ranked`, `qualified`, `loved`, and `all`. Available mode filters are `any`, `osu!`, `osu!taiko`, `osu!catch`, and `osu!mania`. For a manual request using `status:all`, Alren randomly chooses one of the three supported statuses.
 
 ### Configure automatic updates
 
-Server administrators run `/osumap-settings` to choose the automatic beatmap channel, status filter, and mode filter. The command saves the default filter and enables the feed privately:
+Server administrators run `/setup beatmap` to choose the automatic beatmap channel, status filter, and mode filter. The command saves the default filter and enables the feed privately:
 
 ```text
-/osumap-settings status:all mode:any channel:#beatmaps
+/setup beatmap status:all mode:any channel:#beatmaps
 ```
 
 The first configuration defaults to `ranked` and `any` when filters are omitted. If `channel` is omitted, Alren uses the channel where the command was run. On later runs, omitted filters keep their previously saved values.
@@ -207,10 +206,10 @@ Alren can monitor two public community data sources:
 Run [`supabase/community_alert_settings.sql`](supabase/community_alert_settings.sql) in Supabase SQL Editor once. Then, in Discord, an administrator with **Manage Server** can configure the alert destination and BN mode:
 
 ```text
-/community-alert-settings channel:#alerts bn_mode:Standard (osu!)
+/setup alerts channel:#alerts bn_mode:Standard (osu!)
 ```
 
-Choose `Standard (osu!)`, `Taiko`, `Catch`, or `Mania` from the `bn_mode` menu. `All osu! modes` is also available when you want every BN opening. The command works directly in Discord chat; no server environment variable or terminal command is needed to change the channel or mode. The BN mode filter applies only to BN request-opening messages; new Mappers' Guild missions are always sent to the selected channel. Run the command again with no options to view the saved setting, or provide one option to change just that value.
+Choose `Standard (osu!)`, `Taiko`, `Catch`, or `Mania` from the `bn_mode` menu. `All osu! modes` is also available when you want every BN opening. The command works directly in Discord chat; no server environment variable or terminal command is needed to change the channel or mode. The BN mode filter applies only to BN request-opening messages; new Mappers' Guild missions are always sent to the selected channel. Run `/setup status` to view the saved setting, or provide one option to change just that value.
 
 Set the optional polling interval in `.env` or Railway Variables:
 
@@ -250,43 +249,51 @@ Example response shape:
 
 ## Commands
 
-The web command guide is available at [https://www.alrenbot.xyz/commands](https://www.alrenbot.xyz/commands). The Discord `/help` and `/alrenhelp` cards link to this page.
+The web command guide is available at [https://www.alrenbot.xyz/commands](https://www.alrenbot.xyz/commands). The Discord `/help` and `!alrenhelp` cards link to this page.
 
-### Easy slash commands
+### Registered slash commands
 
-These short commands cover the most common actions:
+These are the slash commands Alren registers in Discord:
 
 | Command | Description |
 | --- | --- |
+| `/alren message` | Start a private chat with Alren. |
+| `/alrenclear` | Clear your private Alren chat memory in the current channel. |
 | `/help [language]` | Open a private dropdown to choose the Thai or English guide. |
+| `/ping` | Check whether Alren is online. |
 | `/verify [osu_id]` | Start one-click osu! OAuth verification. The ID is optional. |
+| `/verify-status` | Show your linked osu! account in this server. |
 | `/map [status] [mode]` | Post a random beatmap with cover artwork. |
-| `/setup` | View or configure Verify role/channel, Beatmap feed, and BN alerts in one private admin panel. |
+| `/setup status` | View Verify, Beatmap feed, and BN alert settings in one private admin panel. |
+| `/setup verify role channel` | Configure the verified role and public verification result channel. |
+| `/setup beatmap channel status mode` | Configure the automatic beatmap feed. |
+| `/setup alerts channel bn_mode` | Configure BN/Mappers' Guild notifications. |
 
-Existing long-form slash commands and `!` commands remain available for compatibility.
+The older long-form setup slash commands are handled as legacy fallbacks if Discord still has a stale copy cached, but `/setup` is the main admin path.
 
 | Command | Description |
 | --- | --- |
-| `/alren message` or `!alren message` | Start a private chat with Alren. Prefix replies are sent by DM. |
-| `/alrenclear`, `!alrenclear`, or `!reset` | Clear your private Alren chat memory in the current channel. |
-| `/alrenhelp` or `!alrenhelp` | Open a dropdown to choose the styled Thai or English command guide. |
-| `/ping` or `!ping` | Check whether Alren is online. |
-| `/verify-setting role channel` or `!verify-setting @role` | Set the role awarded after osu! verification and the channel that receives profile summaries. Requires Manage Server. |
-| `/verify-status` or `/osuverify-status` or `!verify-status` | Show the linked osu! account in this server. |
-| `/osuverify [osu_user_id]` or `!osuverify [osu_user_id]` | Send an OAuth button by DM and automatically detect the signed-in osu! account. |
-| `/osumap` or `!osumap [status] [mode]` | Post a random beatmap publicly using this server’s saved filters. |
-| `/osumap status mode` | Post a map with temporary status and/or mode filters. |
-| `/osumap-settings status mode channel` or `!osumap-settings [status] [mode]` | Set the automatic beatmap feed channel and filters. Requires Manage Server. |
-| `/osumap-status` or `!osumap-status` | Show the configured automatic beatmap feed channel and filters. |
-| `/community-alert-settings channel bn_mode` or `!community-alert-settings #channel [mode]` | Configure BN/Mappers' Guild notifications. Requires Manage Server. |
+| `!alren message` | Start a private chat with Alren by prefix. Replies are sent by DM. |
+| `!alrenclear` or `!reset` | Clear your private Alren chat memory in the current channel. |
+| `!alrenhelp` | Open a dropdown to choose the styled Thai or English command guide. |
+| `!ping` | Check whether Alren is online. |
+| `!verify-setting @role` | Legacy prefix setup for the verification role. `/setup verify` is preferred. |
+| `!verify-status` | Show the linked osu! account in this server. |
+| `!osuverify [osu_user_id]` | Legacy prefix verification command. `/verify` is preferred. |
+| `!osumap [status] [mode]` | Legacy prefix random beatmap. `/map` is preferred. |
+| `!osumap-settings [status] [mode]` | Legacy prefix beatmap feed setup. `/setup beatmap` is preferred. |
+| `!osumap-status` | Legacy prefix beatmap feed status. `/setup status` is preferred. |
+| `!community-alert-settings #channel [mode]` | Legacy prefix BN/Mappers' Guild setup. `/setup alerts` is preferred. |
 
 ## Recent updates
 
-- `/help`, `/alrenhelp`, and prefix help now link to the web command guide at [alrenbot.xyz/commands](https://www.alrenbot.xyz/commands).
-- `/verify-setting` replaces slash `/verify-role` and configures both the verified role and public verification result channel.
-- `/verify-status` and `/osumap-status` show current user verification and beatmap feed configuration.
+- `/help` and prefix help now link to the web command guide at [alrenbot.xyz/commands](https://www.alrenbot.xyz/commands).
+- `/setup verify` configures both the verified role and public verification result channel.
+- `/verify-status` shows the current user's verification, while `/setup status` shows server settings.
+- `/setup` is now organized into clear subcommands: `status`, `verify`, `beatmap`, and `alerts`.
+- Duplicate slash setup commands such as `/verify-setting`, `/osumap-settings`, `/osumap-status`, and `/community-alert-settings` are no longer registered; use `/setup` instead.
 - Beatmap feed now runs in near realtime by default and handles `status:all mode:any` by checking every watched status independently.
-- `/osumap-settings` now supports `channel` and keeps option order as `status`, `mode`, `channel`.
+- `/setup beatmap` supports `channel`, `status`, and `mode`.
 - osu! map mode labels use the custom mode icons from `img/modes` when Discord application emojis are available.
 - Alren reports the actual command failure reason back to the user, including Supabase, osu!, permission, or role-order errors.
 - Verification can still succeed when Discord blocks nickname changes; Alren skips only the nickname update when role order or permissions prevent it.
@@ -325,13 +332,13 @@ Confirm that `src/osu-maps.js` exists before running `npm start` again.
 
 - Confirm that `SUPABASE_URL` and `SUPABASE_SECRET_KEY` are set.
 - Run the latest Supabase schema after pulling an update.
-- For `/verify-setting channel:...`, run [`supabase/verification_settings.sql`](supabase/verification_settings.sql) once to add `channel_id` to `osu_verification_settings`.
+- For `/setup verify channel:...`, run [`supabase/verification_settings.sql`](supabase/verification_settings.sql) once to add `channel_id` to `osu_verification_settings`.
 - Keep the Supabase secret key on the server; never expose it in Discord or client-side code.
 
 ### Community alerts are not posting
 
 - Run [`supabase/community_alert_settings.sql`](supabase/community_alert_settings.sql) in Supabase SQL Editor.
-- Confirm the server configuration privately with `/community-alert-settings`.
+- Confirm the server configuration privately with `/setup status`.
 - Give Alren **View Channel** and **Send Messages** in the selected channel.
 - Wait for a future BN opening or mission-opening event; existing public entries are intentionally not posted after a restart.
 
@@ -351,7 +358,7 @@ npm test
 
 ### ทดสอบและดู Template ของ osu! beatmap
 
-รันเฉพาะ test ของ `/osumap` และ automatic beatmap feed:
+รันเฉพาะ test ของ `/map` และ automatic beatmap feed:
 
 ```bash
 npm run test:osumap

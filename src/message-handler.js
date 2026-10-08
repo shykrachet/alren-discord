@@ -52,12 +52,12 @@ function createHelpEmbed(language = 'th') {
       .addFields(
         { name: '💬 Private chat', value: '`/alren message:...` or `!alren ...`\n`/alrenclear` or `!alrenclear`' },
         { name: '✅ osu! verification', value: '`/verify` — sign in with osu! OAuth automatically\n`/verify-status` or `!verify-status`' },
-        { name: '🎵 Beatmaps', value: '`/map` — post a random beatmap with cover artwork\n`/osumap-settings status mode channel`\n`/osumap-status`' },
-        { name: '🛠️ Server setup', value: '`/setup` — configure Verify role/channel, Beatmap, and BN alerts\n`/verify-setting role channel` for verification only' },
+        { name: '🎵 Beatmaps', value: '`/map` — post a random beatmap with cover artwork\n`/setup beatmap` — automatic feed\n`/setup status` — current feed settings' },
+        { name: '🛠️ Server setup', value: '`/setup status` — view all settings\n`/setup verify`, `/setup beatmap`, `/setup alerts`' },
         { name: 'ℹ️ Utilities', value: '`/help language:English` or `!alrenhelp en`\n`/ping` or `!ping`' },
         { name: '🌐 Full command guide', value: `[Open the web guide](${COMMANDS_URL})` },
       )
-      .setFooter({ text: 'Slash replies are private • Use /alrenhelp language:ไทย for Thai' });
+      .setFooter({ text: 'Slash replies are private • Use /help language:ไทย for Thai' });
   }
   return embed
     .setTitle('📖 คู่มือคำสั่ง Alren — ภาษาไทย')
@@ -66,12 +66,12 @@ function createHelpEmbed(language = 'th') {
     .addFields(
       { name: '💬 แชทส่วนตัว', value: '`/alren message:...` หรือ `!alren ...`\n`/alrenclear` หรือ `!alrenclear`' },
       { name: '✅ ยืนยันบัญชี osu!', value: '`/verify` — กดปุ่ม OAuth แล้วระบบดึงบัญชีให้อัตโนมัติ\n`/verify-status` หรือ `!verify-status`' },
-      { name: '🎵 Beatmap', value: '`/map` — สุ่ม beatmap พร้อมรูปปก\n`/osumap-settings status mode channel`\n`/osumap-status`' },
-      { name: '🛠️ ตั้งค่าเซิร์ฟเวอร์', value: '`/setup` — ตั้ง Verify role/channel, Beatmap และ BN ในคำสั่งเดียว\n`/verify-setting role channel` สำหรับ verify เท่านั้น' },
+      { name: '🎵 Beatmap', value: '`/map` — สุ่ม beatmap พร้อมรูปปก\n`/setup beatmap` — ตั้ง feed อัตโนมัติ\n`/setup status` — ดูค่าปัจจุบัน' },
+      { name: '🛠️ ตั้งค่าเซิร์ฟเวอร์', value: '`/setup status` — ดูค่าทั้งหมด\n`/setup verify`, `/setup beatmap`, `/setup alerts`' },
       { name: 'ℹ️ เครื่องมือ', value: '`/help language:ไทย` หรือ `!alrenhelp th`\n`/ping` หรือ `!ping`' },
       { name: '🌐 คู่มือบนเว็บ', value: `[เปิดหน้า commands](${COMMANDS_URL})` },
     )
-    .setFooter({ text: 'คำตอบ Slash เป็นส่วนตัว • ใช้ /alrenhelp language:English สำหรับภาษาอังกฤษ' });
+    .setFooter({ text: 'คำตอบ Slash เป็นส่วนตัว • ใช้ /help language:English สำหรับภาษาอังกฤษ' });
 }
 
 function createHelpLanguagePrompt() {
@@ -130,16 +130,16 @@ function formatHelp() {
     '`/help` — easy slash-command menu',
     '`/verify` — one-click osu! OAuth verification',
     '`/map` — random beatmap with cover artwork',
-    '`/setup` — configure Verify, Beatmap, and BN alerts',
+    '`/setup status|verify|beatmap|alerts` — configure server features',
     '`/alren` or `!alren <message>` — private AI chat',
     '`/alrenclear` or `!alrenclear` — clear chat memory',
-    '`/osuverify` or `!osuverify` — verify through osu! OAuth',
+    '`!osuverify` — legacy prefix verify through osu! OAuth',
     '`/verify-status` or `!verify-status` — verification status',
-    '`/verify-setting` or `!verify-setting @role` — configure verification',
-    '`/osumap` or `!osumap [status] [mode]` — random beatmap',
-    '`/osumap-settings` or `!osumap-settings [status] [mode]` — beatmap feed',
-    '`/osumap-status` or `!osumap-status` — beatmap feed status',
-    '`/community-alert-settings` or `!community-alert-settings #channel [mode]` — community alerts',
+    '`!verify-setting @role` — legacy prefix verification setup',
+    '`!osumap [status] [mode]` — legacy prefix random beatmap',
+    '`!osumap-settings [status] [mode]` — legacy prefix beatmap feed setup',
+    '`!osumap-status` — legacy prefix beatmap feed status',
+    '`!community-alert-settings #channel [mode]` — legacy prefix community alerts',
     '`/ping` or `!ping`',
   ].join('\n');
 }

@@ -29,22 +29,29 @@ test('registers global commands and removes legacy guild commands', async () => 
 
   assert.equal(calls.length, 3);
   assert.equal(calls[0].route, '/applications/application-id/commands');
-  assert.ok(calls[0].options.body.length > 0);
-  assert.ok(calls[0].options.body.some((command) => command.name === 'ping'));
+  assert.deepEqual(calls[0].options.body.map((command) => command.name), [
+    'alren',
+    'alrenclear',
+    'ping',
+    'help',
+    'verify-status',
+    'verify',
+    'map',
+    'setup',
+  ]);
   assert.equal(calls[0].options.body.some((command) => command.name === 'version'), false);
-  assert.ok(calls[0].options.body.some((command) => command.name === 'help'));
-  assert.ok(calls[0].options.body.some((command) => command.name === 'map'));
-  assert.ok(calls[0].options.body.some((command) => command.name === 'setup'));
+  assert.equal(calls[0].options.body.some((command) => command.name === 'alrenhelp'), false);
+  assert.equal(calls[0].options.body.some((command) => command.name === 'community-alert-settings'), false);
+  assert.equal(calls[0].options.body.some((command) => command.name === 'osumap'), false);
+  assert.equal(calls[0].options.body.some((command) => command.name === 'osumap-settings'), false);
+  assert.equal(calls[0].options.body.some((command) => command.name === 'osumap-status'), false);
+  assert.equal(calls[0].options.body.some((command) => command.name === 'osuverify'), false);
+  assert.equal(calls[0].options.body.some((command) => command.name === 'osuverify-status'), false);
+  assert.equal(calls[0].options.body.some((command) => command.name === 'verify-setting'), false);
   assert.equal(calls[0].options.body.some((command) => command.name === 'verify-role'), false);
   assert.equal(calls[0].options.body.some((command) => command.name === 'verify-role-status'), false);
-  assert.ok(calls[0].options.body.some((command) => command.name === 'verify-setting'));
-  assert.ok(calls[0].options.body.some((command) => command.name === 'verify-status'));
-  assert.ok(calls[0].options.body.some((command) => command.name === 'osumap-status'));
-  const mapSettingsCommand = calls[0].options.body.find((command) => command.name === 'osumap-settings');
-  assert.deepEqual(mapSettingsCommand.options.map((option) => option.name), ['status', 'mode', 'channel']);
-  assert.equal(mapSettingsCommand.options[2].type, 7);
-  const verifyCommand = calls[0].options.body.find((command) => command.name === 'osuverify');
-  assert.equal(verifyCommand.options[0].required, false);
+  const setupCommand = calls[0].options.body.find((command) => command.name === 'setup');
+  assert.deepEqual(setupCommand.options.map((option) => option.name), ['status', 'verify', 'beatmap', 'alerts']);
   const quickVerifyCommand = calls[0].options.body.find((command) => command.name === 'verify');
   assert.equal(quickVerifyCommand.options[0].required, false);
   assert.deepEqual(calls.slice(1), [
@@ -152,7 +159,7 @@ test('osumap-settings reports the real configuration error', async () => {
   assert.match(reply, /Reason: Supabase is missing osu_map_settings/);
 });
 
-test('quick setup configures a selected verification role', async () => {
+test('setup verify configures a selected verification role', async () => {
   const selectedRole = { id: 'verified-role' };
   const selectedChannel = { id: 'verify-channel' };
   const configured = [];
@@ -166,9 +173,10 @@ test('quick setup configures a selected verification role', async () => {
     isChatInputCommand: () => true,
     memberPermissions: { has: () => true },
     options: {
-      getChannel: () => null,
-      getRole: (name) => (name === 'verify_role' ? selectedRole : null),
+      getChannel: (name) => (name === 'channel' ? selectedChannel : null),
+      getRole: (name) => (name === 'role' ? selectedRole : null),
       getString: () => null,
+      getSubcommand: () => 'verify',
     },
     async deferReply() {},
     async deleteReply() {},
@@ -194,6 +202,7 @@ test('quick setup configures a selected verification role', async () => {
 
   assert.equal(configured.length, 1);
   assert.equal(configured[0][1].role, selectedRole);
+  assert.equal(configured[0][1].channel, selectedChannel);
   assert.match(reply.embeds[0].toJSON().title, /บันทึก/);
 });
 
