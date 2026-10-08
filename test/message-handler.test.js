@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 
-const { createHelpEmbed, createMessageHandler } = require('../src/message-handler');
+const { COMMANDS_URL, createHelpEmbed, createMessageHandler } = require('../src/message-handler');
 
 function message(content) {
   const sent = [];
@@ -71,8 +71,11 @@ test('help cards support Thai and English', () => {
   const english = createHelpEmbed('en').toJSON();
 
   assert.match(thai.title, /ภาษาไทย/);
+  assert.equal(thai.url, COMMANDS_URL);
+  assert.ok(thai.fields.at(-1).value.includes(COMMANDS_URL));
   assert.match(thai.fields[0].name, /แชทส่วนตัว/);
   assert.match(english.title, /English/);
+  assert.equal(english.url, COMMANDS_URL);
   assert.match(english.fields[0].name, /Private chat/);
 });
 
@@ -90,7 +93,10 @@ test('prefix help without a language sends the language dropdown', async () => {
 
   const embed = input.sent[0].embeds[0].toJSON();
   const menu = input.sent[0].components[0].toJSON().components[0];
+  const button = input.sent[0].components[1].toJSON().components[0];
   assert.match(embed.title, /Choose a language/);
+  assert.equal(embed.url, COMMANDS_URL);
   assert.equal(menu.custom_id, 'alrenhelp:language');
   assert.deepEqual(menu.options.map((option) => option.value), ['th', 'en']);
+  assert.equal(button.url, COMMANDS_URL);
 });

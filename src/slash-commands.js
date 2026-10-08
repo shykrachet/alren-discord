@@ -4,7 +4,7 @@ const {
 const {
   createAlrenEmbed,
   createHelpEmbed,
-  createHelpLanguageMenu,
+  createHelpComponents,
   createHelpLanguagePrompt,
 } = require('./message-handler');
 const { createMapEmbed } = require('./osu-maps');
@@ -120,7 +120,11 @@ const OSU_MAP_SETTINGS_COMMAND = new SlashCommandBuilder()
   .addStringOption((option) => option
     .setName('mode')
     .setDescription('Default game mode')
-    .addChoices(...MAP_MODE_CHOICES));
+    .addChoices(...MAP_MODE_CHOICES))
+  .addChannelOption((option) => option
+    .setName('channel')
+    .setDescription('Channel that receives automatic beatmap posts')
+    .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement));
 
 const QUICK_MAP_COMMAND = new SlashCommandBuilder()
   .setName('map')
@@ -232,6 +236,15 @@ function describeBnMode(mode) {
   return BN_MODE_CHOICES.find((choice) => choice.value === mode)?.name ?? '🌐 All osu! modes';
 }
 
+function errorReason(error) {
+  const reason = String(error?.message || error || 'Unknown error').trim();
+  return reason.length > 1500 ? `${reason.slice(0, 1497)}...` : reason;
+}
+
+function commandError(prefix, error) {
+  return `${prefix}\nReason: ${errorReason(error)}`;
+}
+
 function createSetupEmbed({ alerts, map, roleId, updated }) {
   const mapText = map?.channel_id
     ? `<#${map.channel_id}>\n${describeFilters({ mode: map.mode_filter, status: map.status_filter })}`
@@ -254,11 +267,19 @@ function createSetupEmbed({ alerts, map, roleId, updated }) {
     .setTimestamp();
 }
 
+function getApplicationId(client) {
+  return client.application?.id || client.user.id;
+}
+
+function createRest(token, providedRest) {
+  return providedRest ?? new REST({ version: '10' }).setToken(token);
+}
+
 async function registerSlashCommands({ client, token, rest: providedRest }) {
   if (!client.user || (!token && !providedRest)) return;
 
-  const rest = providedRest ?? new REST({ version: '10' }).setToken(token);
-  const applicationId = client.application?.id || client.user.id;
+  const rest = createRest(token, providedRest);
+  const applicationId = getApplicationId(client);
 
   // Global commands automatically become available in every server where the
   // app is installed, including servers that add the bot after it starts.
@@ -282,13 +303,26 @@ async function registerSlashCommands({ client, token, rest: providedRest }) {
   console.log(`registered ${COMMANDS.length} global slash command(s) for ${guilds.length} server(s)`);
 }
 
+async function registerGuildSlashCommands({
+  client, guild, token, rest: providedRest,
+}) {
+  if (!client.user || !guild?.id || (!token && !providedRest)) return;
+
+  const rest = createRest(token, providedRest);
+  await rest.put(
+    Routes.applicationGuildCommands(getApplicationId(client), guild.id),
+    { body: COMMANDS },
+  );
+  console.log(`registered ${COMMANDS.length} slash command(s) for ${guild.name || guild.id}`);
+}
+
 function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
   return async (interaction) => {
     if (interaction.isStringSelectMenu?.() && interaction.customId === 'alrenhelp:language') {
       const language = interaction.values[0] === 'en' ? 'en' : 'th';
       await interaction.update({
         embeds: [createHelpEmbed(language)],
-        components: [createHelpLanguageMenu(language)],
+        components: createHelpComponents(language),
       });
       return;
     }
@@ -413,7 +447,7 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
         }
       } catch (error) {
         console.error('Community alert settings failed:', error.message);
-        await interaction.editReply('I could not save the community alert settings. Apply the Supabase schema and try again.');
+        await interaction.editReply(commandError('I could not save the community alert settings.', error));
       }
       scheduleReplyDeletion(interaction);
       return;
@@ -439,18 +473,20 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
 
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       try {
+        const selectedChannel = interaction.options.getChannel('channel');
         const status = interaction.options.getString('status') ?? undefined;
         const mode = interaction.options.getString('mode') ?? undefined;
+        const channelId = selectedChannel?.id || interaction.channelId;
         const settings = await osuMaps.configureFeed({
-          channelId: interaction.channelId,
+          channelId,
           guildId: interaction.guildId,
           mode,
           status,
         });
-        await interaction.editReply(`Automatic beatmap feed enabled in <#${interaction.channelId}>: **${describeFilters(settings)}**. New maps will be posted here on the next check (up to 15 minutes by default).`);
+        await interaction.editReply(`Automatic beatmap feed enabled in <#${channelId}>: **${describeFilters(settings)}**. New maps will be posted there on the next check (up to 15 minutes by default).`);
       } catch (error) {
         console.error('Beatmap settings failed:', error.message);
-        await interaction.editReply('I could not save the beatmap feed settings. Please check Supabase and try again.');
+        await interaction.editReply(commandError('I could not save the beatmap feed settings.', error));
       }
       scheduleReplyDeletion(interaction);
       return;
@@ -479,7 +515,7 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
         });
       } catch (error) {
         console.error('Beatmap request failed:', error.message);
-        await interaction.editReply('I could not fetch an osu! beatmap right now. Please try again shortly.');
+        await interaction.editReply(commandError('I could not fetch an osu! beatmap right now.', error));
       }
       return;
     }
@@ -489,7 +525,7 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
       const language = interaction.options.getString('language');
       await interaction.editReply({
         embeds: [language ? createHelpEmbed(language) : createHelpLanguagePrompt()],
-        components: [createHelpLanguageMenu(language)],
+        components: createHelpComponents(language),
       });
       scheduleReplyDeletion(interaction);
       return;
@@ -519,7 +555,7 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
         }
       } catch (error) {
         console.error('Private verification command failed:', error.message);
-        await interaction.editReply('I could not complete that verification request. Please try again shortly.');
+        await interaction.editReply(commandError('I could not complete that verification request.', error));
       }
       scheduleReplyDeletion(interaction);
       return;
@@ -547,11 +583,11 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
       await interaction.editReply({ embeds: [createAlrenEmbed(answer)] });
     } catch (error) {
       console.error('Slash chat request failed:', error.message);
-      await interaction.editReply('I cannot respond right now. Please try again shortly.');
+      await interaction.editReply(commandError('I cannot respond right now.', error));
     }
 
     scheduleReplyDeletion(interaction);
   };
 }
 
-module.exports = { createInteractionHandler, registerSlashCommands };
+module.exports = { createInteractionHandler, registerGuildSlashCommands, registerSlashCommands };

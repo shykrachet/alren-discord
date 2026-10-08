@@ -1,5 +1,7 @@
 const {
   ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   EmbedBuilder,
   PermissionsBitField,
   StringSelectMenuBuilder,
@@ -10,6 +12,7 @@ const { createMapEmbed } = require('./osu-maps');
 const ALREN_COLOR = 0xff66aa;
 const SUCCESS_COLOR = 0x22c55e;
 const ERROR_COLOR = 0xef4444;
+const COMMANDS_URL = 'https://www.alrenbot.xyz/commands';
 
 function createAlrenEmbed(text, title = 'Alren') {
   const description = String(text || '...');
@@ -29,6 +32,11 @@ function createStatusEmbed(title, description, color = ALREN_COLOR) {
     .setTimestamp();
 }
 
+function errorReason(error) {
+  const reason = String(error?.message || error || 'Unknown error').trim();
+  return reason.length > 1500 ? `${reason.slice(0, 1497)}...` : reason;
+}
+
 function normalizeHelpLanguage(language) {
   return ['en', 'english'].includes(String(language || '').trim().toLowerCase()) ? 'en' : 'th';
 }
@@ -39,25 +47,29 @@ function createHelpEmbed(language = 'th') {
   if (selected === 'en') {
     return embed
       .setTitle('📖 Alren Command Guide — English')
+      .setURL(COMMANDS_URL)
       .setDescription('Start with `/help`, `/verify`, `/map`, and `/setup`. Existing long-form and `!` commands remain available.')
       .addFields(
         { name: '💬 Private chat', value: '`/alren message:...` or `!alren ...`\n`/alrenclear` or `!alrenclear`' },
         { name: '✅ osu! verification', value: '`/verify` — sign in with osu! OAuth automatically\n`/osuverify-status` or `!osuverify-status`' },
-        { name: '🎵 Beatmaps', value: '`/map` — post a random beatmap with cover artwork\n`/osumap-settings` or `!osumap-settings [status] [mode]`' },
+        { name: '🎵 Beatmaps', value: '`/map` — post a random beatmap with cover artwork\n`/osumap-settings status mode channel` or `!osumap-settings [status] [mode]`' },
         { name: '🛠️ Server setup', value: '`/setup` — configure Verify, Beatmap, and BN alerts\nExisting setup commands remain available' },
         { name: 'ℹ️ Utilities', value: '`/help language:English` or `!alrenhelp en`\n`/ping` or `!ping`' },
+        { name: '🌐 Full command guide', value: `[Open the web guide](${COMMANDS_URL})` },
       )
       .setFooter({ text: 'Slash replies are private • Use /alrenhelp language:ไทย for Thai' });
   }
   return embed
     .setTitle('📖 คู่มือคำสั่ง Alren — ภาษาไทย')
+    .setURL(COMMANDS_URL)
     .setDescription('เริ่มง่ายด้วย `/help`, `/verify`, `/map` และ `/setup` ส่วนคำสั่งแบบยาวกับคำสั่ง `!` ยังใช้ได้ทั้งหมด')
     .addFields(
       { name: '💬 แชทส่วนตัว', value: '`/alren message:...` หรือ `!alren ...`\n`/alrenclear` หรือ `!alrenclear`' },
       { name: '✅ ยืนยันบัญชี osu!', value: '`/verify` — กดปุ่ม OAuth แล้วระบบดึงบัญชีให้อัตโนมัติ\n`/osuverify-status` หรือ `!osuverify-status`' },
-      { name: '🎵 Beatmap', value: '`/map` — สุ่ม beatmap พร้อมรูปปก\n`/osumap-settings` หรือ `!osumap-settings [status] [mode]`' },
+      { name: '🎵 Beatmap', value: '`/map` — สุ่ม beatmap พร้อมรูปปก\n`/osumap-settings status mode channel` หรือ `!osumap-settings [status] [mode]`' },
       { name: '🛠️ ตั้งค่าเซิร์ฟเวอร์', value: '`/setup` — ตั้ง Verify, Beatmap และ BN ในคำสั่งเดียว\nคำสั่งตั้งค่าแบบเดิมยังใช้ได้' },
       { name: 'ℹ️ เครื่องมือ', value: '`/help language:ไทย` หรือ `!alrenhelp th`\n`/ping` หรือ `!ping`' },
+      { name: '🌐 คู่มือบนเว็บ', value: `[เปิดหน้า commands](${COMMANDS_URL})` },
     )
     .setFooter({ text: 'คำตอบ Slash เป็นส่วนตัว • ใช้ /alrenhelp language:English สำหรับภาษาอังกฤษ' });
 }
@@ -66,7 +78,8 @@ function createHelpLanguagePrompt() {
   return new EmbedBuilder()
     .setColor(ALREN_COLOR)
     .setTitle('🌐 เลือกภาษา / Choose a language')
-    .setDescription('เลือกภาษาจากเมนูด้านล่างเพื่อเปิดคู่มือคำสั่ง Alren\nSelect a language below to open the Alren command guide.')
+    .setURL(COMMANDS_URL)
+    .setDescription(`เลือกภาษาจากเมนูด้านล่างเพื่อเปิดคู่มือคำสั่ง Alren\nSelect a language below to open the Alren command guide.\n\nคู่มือบนเว็บ / Web guide: ${COMMANDS_URL}`)
     .setFooter({ text: 'Alren Help Center • ศูนย์ช่วยเหลือ Alren' });
 }
 
@@ -93,9 +106,27 @@ function createHelpLanguageMenu(language) {
   );
 }
 
+function createCommandGuideButton() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setLabel('Command website')
+      .setEmoji('🌐')
+      .setStyle(ButtonStyle.Link)
+      .setURL(COMMANDS_URL),
+  );
+}
+
+function createHelpComponents(language) {
+  return [
+    createHelpLanguageMenu(language),
+    createCommandGuideButton(),
+  ];
+}
+
 function formatHelp() {
   return [
     '**Alren commands**',
+    `Full guide: ${COMMANDS_URL}`,
     '`/help` — easy slash-command menu',
     '`/verify` — one-click osu! OAuth verification',
     '`/map` — random beatmap with cover artwork',
@@ -156,7 +187,7 @@ function createMessageHandler({ bot, chat, osuMaps, osuVerification, store }) {
       const language = args.trim() ? normalizeHelpLanguage(args) : null;
       await sendPrivate(message, {
         embeds: [language ? createHelpEmbed(language) : createHelpLanguagePrompt()],
-        components: [createHelpLanguageMenu(language)],
+        components: createHelpComponents(language),
       });
       return;
     }
@@ -186,7 +217,7 @@ function createMessageHandler({ bot, chat, osuMaps, osuVerification, store }) {
         await sendPrivate(message, { embeds: [createAlrenEmbed(answer)] }, null);
       } catch (error) {
         console.error('Prefix chat request failed:', error.message);
-        await sendPrivate(message, { embeds: [createStatusEmbed('Chat unavailable', 'Please try again shortly.', ERROR_COLOR)] }, null);
+        await sendPrivate(message, { embeds: [createStatusEmbed('Chat unavailable', `Reason: ${errorReason(error)}`, ERROR_COLOR)] }, null);
       }
       return;
     }
@@ -283,8 +314,11 @@ function createMessageHandler({ bot, chat, osuMaps, osuVerification, store }) {
 }
 
 module.exports = {
+  COMMANDS_URL,
   createAlrenEmbed,
+  createCommandGuideButton,
   createHelpEmbed,
+  createHelpComponents,
   createHelpLanguageMenu,
   createHelpLanguagePrompt,
   createMessageHandler,

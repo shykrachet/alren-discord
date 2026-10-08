@@ -28,6 +28,14 @@ function addProfileArtwork(embed, user, fallbackAvatarUrl) {
   return embed;
 }
 
+function roleName(role) {
+  return role?.name ? `**${role.name}**` : 'that role';
+}
+
+function botHighestRoleName(member) {
+  return member?.roles?.highest?.name ? `**${member.roles.highest.name}**` : 'Alren\'s highest role';
+}
+
 function createVerificationMessage({ authorizationUrl, botAvatarUrl, guildName, osuProfile, welcome = false }) {
   const identity = osuProfile
     ? `This link is prepared for **${osuProfile.username}** (osu! ID ${osuProfile.id}).`
@@ -101,14 +109,14 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
 
   async function validateAssignableRole(guild, role) {
     if (!role || role.id === guild.id || role.managed) {
-      throw new Error('Choose a normal role that the bot can assign.');
+      throw new Error('Choose a normal, manually created role that Alren can assign.');
     }
     const me = guild.members.me ?? await guild.members.fetchMe();
     if (!me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
-      throw new Error('The bot needs the Manage Roles permission to assign this role.');
+      throw new Error('Alren needs the Manage Roles permission to assign verification roles. Reinvite the bot with Manage Roles or grant that permission in this server.');
     }
     if (role.position >= me.roles.highest.position) {
-      throw new Error('The selected role must be lower than the bot\'s highest role.');
+      throw new Error(`The selected role ${roleName(role)} must be lower than ${botHighestRoleName(me)}. In Server Settings > Roles, drag Alren's bot role above ${role.name || role.id}, then run /verify-role again.`);
     }
     return me;
   }
@@ -131,14 +139,6 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
     const member = await guild.members.fetch(discordUserId);
     const { role, me } = await getVerificationRole(guild);
     const canManageNicknames = me.permissions.has(PermissionsBitField.Flags.ManageNicknames);
-    const isServerOwner = guild.ownerId === member.id;
-
-    if (!canManageNicknames && !isServerOwner) {
-      throw new Error('The bot needs the Manage Nicknames permission to update Discord nicknames.');
-    }
-    if (!member.manageable && !isServerOwner) {
-      throw new Error('The bot cannot update this member\'s nickname because their role is equal to or higher than the bot\'s role.');
-    }
 
     await member.roles.add(role, 'Verified through osu! OAuth');
     const nicknameUpdated = canManageNicknames && member.manageable;
@@ -256,11 +256,11 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       const completionMessage = result.nicknameUpdated
         ? `Welcome, ${osuUser.username}. Your Discord nickname and ${result.role.name} role have been set.`
-        : `Welcome, ${osuUser.username}. Your ${result.role.name} role has been set. Discord does not allow bots to change a server owner's nickname.`;
+        : `Welcome, ${osuUser.username}. Your ${result.role.name} role has been set. Discord did not allow Alren to change your nickname because of server permissions or role order.`;
       response.end(htmlPage('Verification complete!', completionMessage, true));
       const nicknameNotice = result.nicknameUpdated
         ? 'Your Discord nickname was updated to your osu! username.'
-        : 'Your nickname was unchanged because Discord does not allow bots to edit the server owner.';
+        : 'Your nickname was unchanged because Discord did not allow Alren to edit it in this server.';
       await bot.users.fetch(pending.discord_user_id).then((verifiedUser) => {
         const completionEmbed = new EmbedBuilder()
           .setColor(0x22c55e)

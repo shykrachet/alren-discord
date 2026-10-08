@@ -1,6 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const { OSU_CLIENT_ID, OSU_CLIENT_SECRET } = require('./config');
-const { modeLabel } = require('./mode-icons');
+const { modeIcon, modeLabel } = require('./mode-icons');
 
 const OSU_API_URL = 'https://osu.ppy.sh/api/v2';
 const OSU_TOKEN_URL = 'https://osu.ppy.sh/oauth/token';
@@ -37,9 +37,17 @@ function validateMode(mode) {
   throw new Error(`Unsupported osu! mode: ${mode}`);
 }
 
+function beatmapModes(beatmapset) {
+  return [...new Set((beatmapset.beatmaps || []).map((beatmap) => beatmap.mode).filter(Boolean))];
+}
+
 function mapModes(beatmapset) {
-  const modes = new Set((beatmapset.beatmaps || []).map((beatmap) => beatmap.mode));
-  return [...modes].map(modeLabel).join(', ') || 'Unknown';
+  return beatmapModes(beatmapset).map(modeLabel).join(', ') || 'Unknown';
+}
+
+function modeFieldName(beatmapset) {
+  const icons = beatmapModes(beatmapset).map(modeIcon).join(' ');
+  return icons ? `${icons} Modes` : '🎮 Modes';
 }
 
 function mapNominators(beatmapset) {
@@ -101,7 +109,7 @@ function createMapEmbed(beatmapset) {
     .setDescription(`Mapped by ${mapper}\n[Open beatmap page ↗](${url})`)
     .addFields(
       { name: '🏷️ Status', value: statusLabel, inline: true },
-      { name: '🎮 Modes', value: mapModes(beatmapset), inline: true },
+      { name: modeFieldName(beatmapset), value: mapModes(beatmapset), inline: true },
       { name: '⭐ Difficulties', value: difficultySummary(beatmapset), inline: true },
       { name: '🎵 BPM', value: Number.isFinite(bpm) ? String(bpm) : 'Unknown', inline: true },
       { name: '⏱️ Length', value: mapLength(beatmapset), inline: true },

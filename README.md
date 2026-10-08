@@ -73,6 +73,8 @@ Open the [Discord Developer Portal](https://discord.com/developers/applications)
 
 Slash commands are registered globally when Alren starts. The same commands therefore become available in every server that installs the bot, including servers added later without restarting Alren. Discord may take a few minutes to show newly registered global commands.
 
+When Alren joins a new server while it is already running, it also registers guild slash commands for that server immediately so `/help`, `/verify`, `/map`, and setup commands become available faster.
+
 ### 4. Configure AI chat
 
 Add one of the following to `.env` locally or Railway Variables.
@@ -129,7 +131,7 @@ Use `/alren` or `!alren <message>` to chat with Alren. Mentioning the bot with a
 - Slash replies are ephemeral. Prefix and mention replies are sent by DM so the conversation stays private.
 - Slash replies delete automatically after five minutes.
 - Use `/alrenclear`, `!alrenclear`, or `!reset` to clear your private chat memory in the current channel.
-- Use `/alrenhelp` to open this guide privately.
+- Use `/help` or `/alrenhelp` to open the private Discord help card. It includes a button to the full web command guide: [alrenbot.xyz/commands](https://www.alrenbot.xyz/commands).
 
 ## osu! verification
 
@@ -158,7 +160,7 @@ The Alren role must be above the selected role in **Server Settings → Roles**.
 
 When a new member joins a server that has a verification role configured, Alren automatically sends the same private OAuth onboarding message. Verification links last for 10 minutes and are tied to the Discord member who requested or received them. An optional osu! ID may still be supplied to `/osuverify` or `!osuverify` when the account should be preselected and checked before OAuth.
 
-> Discord does not allow bots to change a Server Owner’s nickname. The Server Owner can still verify and receive the configured role.
+> Discord only lets bots manage roles and nicknames below the bot's highest role. If Alren cannot rename someone, verification still succeeds and only the nickname update is skipped. If Alren cannot assign the configured role, move Alren's bot role above the verification role in **Server Settings → Roles**.
 
 ## osu! beatmap feed
 
@@ -174,13 +176,13 @@ Available status filters are `ranked`, `qualified`, `loved`, and `all`. Availabl
 
 ### Configure automatic updates
 
-Server administrators run `/osumap-settings` in the channel that should receive automatic updates. It saves the default filter and enables the feed privately:
+Server administrators run `/osumap-settings` to choose the automatic beatmap channel, status filter, and mode filter. The command saves the default filter and enables the feed privately:
 
 ```text
-/osumap-settings status:all mode:any
+/osumap-settings status:all mode:any channel:#beatmaps
 ```
 
-The first configuration defaults to `ranked` and `any` when filters are omitted. On later runs, omitted filters keep their previously saved values. Running the command in another channel moves future feed posts to that channel.
+The first configuration defaults to `ranked` and `any` when filters are omitted. If `channel` is omitted, Alren uses the channel where the command was run. On later runs, omitted filters keep their previously saved values.
 
 Alren checks osu! when the bot starts and every 15 minutes afterward. It posts only the latest matching map and records every automatic post to prevent duplicates. The first configuration records the current latest map without posting it, so enabling the feed does not publish an old map.
 
@@ -245,6 +247,8 @@ Example response shape:
 
 ## Commands
 
+The web command guide is available at [https://www.alrenbot.xyz/commands](https://www.alrenbot.xyz/commands). The Discord `/help` and `/alrenhelp` cards link to this page.
+
 ### Easy slash commands
 
 These short commands cover the most common actions:
@@ -270,8 +274,17 @@ Existing long-form slash commands and `!` commands remain available for compatib
 | `/osuverify-status` or `!osuverify-status` | Show the linked osu! account in this server. |
 | `/osumap` or `!osumap [status] [mode]` | Post a random beatmap publicly using this server’s saved filters. |
 | `/osumap status mode` | Post a map with temporary status and/or mode filters. |
-| `/osumap-settings status mode` or `!osumap-settings [status] [mode]` | Set the current channel as the automatic beatmap feed. Requires Manage Server. |
+| `/osumap-settings status mode channel` or `!osumap-settings [status] [mode]` | Set the automatic beatmap feed channel and filters. Requires Manage Server. |
 | `/community-alert-settings channel bn_mode` or `!community-alert-settings #channel [mode]` | Configure BN/Mappers' Guild notifications. Requires Manage Server. |
+
+## Recent updates
+
+- `/help`, `/alrenhelp`, and prefix help now link to the web command guide at [alrenbot.xyz/commands](https://www.alrenbot.xyz/commands).
+- `/osumap-settings` now supports `channel` and keeps option order as `status`, `mode`, `channel`.
+- osu! map mode labels use the custom mode icons from `img/modes` when Discord application emojis are available.
+- Alren reports the actual command failure reason back to the user, including Supabase, osu!, permission, or role-order errors.
+- Verification can still succeed when Discord blocks nickname changes; Alren skips only the nickname update when role order or permissions prevent it.
+- When invited to a new server, Alren registers guild slash commands immediately in addition to global startup registration.
 
 ## Troubleshooting
 
@@ -294,6 +307,12 @@ Confirm that `src/osu-maps.js` exists before running `npm start` again.
 - Confirm that `OSU_CLIENT_ID` and `OSU_CLIENT_SECRET` match the same osu! OAuth application.
 - Confirm that the bot host can reach `https://osu.ppy.sh`.
 - Check the bot logs for an osu! authentication or beatmap-search status code.
+
+### Slash commands are missing after inviting the bot
+
+- Use an invite URL with both `bot` and `applications.commands` scopes.
+- Confirm the bot has View Channels and Send Messages in the channel where you are testing.
+- Alren registers global commands at startup and registers guild commands immediately when it joins a new server. If Discord still does not show commands, restart Alren once and check the logs for command-registration errors.
 
 ### Automatic feed is disabled or settings cannot be saved
 

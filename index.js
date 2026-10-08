@@ -1,6 +1,6 @@
 require('dotenv').config();
 
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits, MessageFlags } = require('discord.js');
 const OpenAI = require('openai');
 const {
   AI_BASE_URL, DISCORD_TOKEN, OPENAI_API_KEY,
@@ -15,7 +15,11 @@ const { createMessageHandler } = require('./src/message-handler');
 const { syncApplicationModeEmojis } = require('./src/mode-icons');
 const { createMapEmbed, createOsuMapService } = require('./src/osu-maps');
 const { createOsuVerificationService } = require('./src/osu-verification');
-const { createInteractionHandler, registerSlashCommands } = require('./src/slash-commands');
+const {
+  createInteractionHandler,
+  registerGuildSlashCommands,
+  registerSlashCommands,
+} = require('./src/slash-commands');
 const { createSupabaseStore } = require('./src/supabase-store');
 
 const bot = new Client({
@@ -107,15 +111,36 @@ bot.on('guildMemberAdd', (member) => {
     console.error('Welcome verification failed:', error.message);
   });
 });
+bot.on('guildCreate', (guild) => {
+  registerGuildSlashCommands({ client: bot, guild, token: DISCORD_TOKEN }).catch((error) => {
+    console.error(`Could not register slash commands for ${guild.id}:`, error.message);
+  });
+});
 const handleInteraction = createInteractionHandler({
   chat,
   osuMaps,
   osuVerification,
   store: verificationStore,
 });
+async function reportInteractionError(interaction, error) {
+  if (!interaction?.isRepliable?.()) return;
+  const reason = String(error?.message || error || 'Unknown error').trim();
+  const content = `Alren could not run this command.\nReason: ${reason.length > 1500 ? `${reason.slice(0, 1497)}...` : reason}`;
+  if (interaction.deferred || interaction.replied) {
+    await interaction.editReply(content).catch(() => interaction.followUp({
+      content,
+      flags: MessageFlags.Ephemeral,
+    }).catch(() => {}));
+    return;
+  }
+  await interaction.reply({ content, flags: MessageFlags.Ephemeral }).catch(() => {});
+}
 bot.on('interactionCreate', (interaction) => {
   handleInteraction(interaction).catch((error) => {
     console.error('Interaction handler failed:', error.message);
+    reportInteractionError(interaction, error).catch((reportError) => {
+      console.error('Could not report interaction failure:', reportError.message);
+    });
   });
 });
 bot.on('error', (error) => {

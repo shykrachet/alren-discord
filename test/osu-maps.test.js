@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { createMapEmbed, createOsuMapService } = require('../src/osu-maps');
+const { syncApplicationModeEmojis } = require('../src/mode-icons');
 
 function beatmapsetTemplate(id, status = 'ranked') {
   return {
@@ -67,6 +68,7 @@ test('createMapEmbed presents the beatmap metadata', () => {
   assert.equal(embed.title, 'Artist — Title');
   assert.equal(embed.url, 'https://osu.ppy.sh/beatmapsets/123');
   assert.equal(embed.fields.find((field) => field.name.includes('Status')).value, '⏫ Ranked');
+  assert.equal(embed.fields.find((field) => field.name.includes('Modes')).name, '🎯 🎹 Modes');
   assert.equal(embed.fields.find((field) => field.name.includes('Modes')).value, '🎯 osu!, 🎹 osu!mania');
   assert.equal(embed.fields.find((field) => field.name.includes('Difficulties')).value, '2.50★ – 5.75★ • 2 difficulties');
   assert.equal(embed.fields.find((field) => field.name.includes('Nominators')).value, '[Nominator](https://osu.ppy.sh/users/42)');
@@ -76,6 +78,25 @@ test('createMapEmbed presents the beatmap metadata', () => {
   assert.equal(embed.fields.some((field) => field.name.includes('Mapper Tags')), false);
   assert.equal(embed.image.url, 'https://example.com/cover.jpg');
   assert.equal(embed.thumbnail.url, 'https://example.com/list.jpg');
+});
+
+test('createMapEmbed uses synced img/modes application emoji icons', async () => {
+  const application = {
+    emojis: {
+      async fetch() {
+        return [];
+      },
+      async create(options) {
+        return { id: options.name.endsWith('osu') ? '10' : '20', name: options.name };
+      },
+    },
+  };
+
+  await syncApplicationModeEmojis(application);
+  const embed = createMapEmbed(beatmapsetTemplate(123)).toJSON();
+
+  assert.equal(embed.fields.find((field) => field.name.includes('Modes')).name, '<:alren_mode_osu:10> <:alren_mode_mania:20> Modes');
+  assert.equal(embed.fields.find((field) => field.name.includes('Modes')).value, '<:alren_mode_osu:10> osu!, <:alren_mode_mania:20> osu!mania');
 });
 
 test('uses the requested Discord status icons', () => {
