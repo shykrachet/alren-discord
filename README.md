@@ -104,7 +104,7 @@ VERIFY_PORT=3000
 
 ### 6. Configure Supabase
 
-1. In Supabase, open **SQL Editor** and apply your project schema. The bot expects the `osu_verifications`, `osu_verification_settings`, `osu_verification_requests`, `osu_map_settings`, `osu_map_posts`, and `community_alert_settings` tables.
+1. In Supabase, open **SQL Editor** and apply your project schema. The bot expects the `osu_verifications`, `osu_verification_settings`, `osu_verification_requests`, `osu_map_settings`, `osu_map_posts`, and `community_alert_settings` tables. For verification result channels, also run [`supabase/verification_settings.sql`](supabase/verification_settings.sql).
 2. Copy the project URL and a server-only secret key from **Project Settings → API Keys**.
 3. Add them to `.env` or Railway Variables:
 
@@ -137,13 +137,14 @@ Use `/alren` or `!alren <message>` to chat with Alren. Mentioning the bot with a
 
 ### For server administrators
 
-Choose the Discord role members receive after a successful verification:
+Use `/setup` as the main admin panel, or `/verify-setting` when you only want to change verification:
 
 ```text
-/verify-role role:@role
+/setup verify_role:@Verified verify_channel:#verify-log
+/verify-setting role:@Verified channel:#verify-log
 ```
 
-The Alren role must be above the selected role in **Server Settings → Roles**.
+The verified role is given after successful OAuth. The verification channel receives a public profile summary after each successful verification. The Alren role must be above the selected role in **Server Settings → Roles**.
 
 ### For members
 
@@ -156,7 +157,7 @@ The Alren role must be above the selected role in **Server Settings → Roles**.
 
 2. Alren sends a styled personal verification message with an OAuth button by DM.
 3. Open the link and sign in to osu!. Alren detects the account ID and username automatically.
-4. Alren gives the configured role, updates your Discord nickname to your osu! username when Discord allows it, and sends the result by DM.
+4. Alren gives the configured role, updates your Discord nickname to your osu! username when Discord allows it, and sends a profile summary by DM. The completion card includes your osu! name, avatar/cover artwork, preferred rank mode, global rank, country rank, country, and a direct profile link.
 
 When a new member joins a server that has a verification role configured, Alren automatically sends the same private OAuth onboarding message. Verification links last for 10 minutes and are tied to the Discord member who requested or received them. An optional osu! ID may still be supplied to `/osuverify` or `!osuverify` when the account should be preselected and checked before OAuth.
 
@@ -184,15 +185,17 @@ Server administrators run `/osumap-settings` to choose the automatic beatmap cha
 
 The first configuration defaults to `ranked` and `any` when filters are omitted. If `channel` is omitted, Alren uses the channel where the command was run. On later runs, omitted filters keep their previously saved values.
 
-Alren checks osu! when the bot starts and every 15 minutes afterward. It posts only the latest matching map and records every automatic post to prevent duplicates. The first configuration records the current latest map without posting it, so enabling the feed does not publish an old map.
+Alren checks osu! immediately when the bot starts and then every 30 seconds by default. For `status:all mode:any`, it watches Ranked, Qualified, and Loved separately, then posts every newly discovered map before the previous watermark instead of only one latest map. Every automatic post is recorded to prevent duplicates. The first configuration records the current latest map per watched status without posting it, so enabling the feed does not publish old maps.
 
-Set `OSU_MAP_FEED_INTERVAL_MINUTES` in `.env` or Railway Variables to change the interval. Values are limited to 5–60 minutes:
+Set `OSU_MAP_FEED_INTERVAL_SECONDS` in `.env` or Railway Variables to change the realtime interval. Values are limited to 30–3600 seconds:
 
 ```env
-OSU_MAP_FEED_INTERVAL_MINUTES=15
+OSU_MAP_FEED_INTERVAL_SECONDS=30
 ```
 
-After updating the bot, reapply your project schema in Supabase SQL Editor so the `osu_map_settings`, `osu_map_posts`, and `community_alert_settings` tables are available.
+`OSU_MAP_FEED_INTERVAL_MINUTES` is still accepted for older deployments, but seconds are preferred.
+
+After updating the bot, reapply your project schema in Supabase SQL Editor so the `osu_map_settings`, `osu_map_posts`, `community_alert_settings`, and the `osu_verification_settings.channel_id` column are available.
 
 ## BN and Mappers' Guild alerts
 
@@ -258,7 +261,7 @@ These short commands cover the most common actions:
 | `/help [language]` | Open a private dropdown to choose the Thai or English guide. |
 | `/verify [osu_id]` | Start one-click osu! OAuth verification. The ID is optional. |
 | `/map [status] [mode]` | Post a random beatmap with cover artwork. |
-| `/setup` | View or configure Verify, Beatmap feed, and BN alerts in one private admin panel. |
+| `/setup` | View or configure Verify role/channel, Beatmap feed, and BN alerts in one private admin panel. |
 
 Existing long-form slash commands and `!` commands remain available for compatibility.
 
@@ -268,22 +271,26 @@ Existing long-form slash commands and `!` commands remain available for compatib
 | `/alrenclear`, `!alrenclear`, or `!reset` | Clear your private Alren chat memory in the current channel. |
 | `/alrenhelp` or `!alrenhelp` | Open a dropdown to choose the styled Thai or English command guide. |
 | `/ping` or `!ping` | Check whether Alren is online. |
-| `/verify-role role:@role` or `!verify-role @role` | Set the role awarded after osu! verification. Requires Manage Server. |
-| `/verify-role-status` or `!verify-role-status` | Show the configured verification role. |
+| `/verify-setting role channel` or `!verify-setting @role` | Set the role awarded after osu! verification and the channel that receives profile summaries. Requires Manage Server. |
+| `/verify-status` or `/osuverify-status` or `!verify-status` | Show the linked osu! account in this server. |
 | `/osuverify [osu_user_id]` or `!osuverify [osu_user_id]` | Send an OAuth button by DM and automatically detect the signed-in osu! account. |
-| `/osuverify-status` or `!osuverify-status` | Show the linked osu! account in this server. |
 | `/osumap` or `!osumap [status] [mode]` | Post a random beatmap publicly using this server’s saved filters. |
 | `/osumap status mode` | Post a map with temporary status and/or mode filters. |
 | `/osumap-settings status mode channel` or `!osumap-settings [status] [mode]` | Set the automatic beatmap feed channel and filters. Requires Manage Server. |
+| `/osumap-status` or `!osumap-status` | Show the configured automatic beatmap feed channel and filters. |
 | `/community-alert-settings channel bn_mode` or `!community-alert-settings #channel [mode]` | Configure BN/Mappers' Guild notifications. Requires Manage Server. |
 
 ## Recent updates
 
 - `/help`, `/alrenhelp`, and prefix help now link to the web command guide at [alrenbot.xyz/commands](https://www.alrenbot.xyz/commands).
+- `/verify-setting` replaces slash `/verify-role` and configures both the verified role and public verification result channel.
+- `/verify-status` and `/osumap-status` show current user verification and beatmap feed configuration.
+- Beatmap feed now runs in near realtime by default and handles `status:all mode:any` by checking every watched status independently.
 - `/osumap-settings` now supports `channel` and keeps option order as `status`, `mode`, `channel`.
 - osu! map mode labels use the custom mode icons from `img/modes` when Discord application emojis are available.
 - Alren reports the actual command failure reason back to the user, including Supabase, osu!, permission, or role-order errors.
 - Verification can still succeed when Discord blocks nickname changes; Alren skips only the nickname update when role order or permissions prevent it.
+- Verification completion DMs now show the verified osu! player's avatar, country, preferred rank mode, global rank, country rank, and profile link.
 - When invited to a new server, Alren registers guild slash commands immediately in addition to global startup registration.
 
 ## Troubleshooting
@@ -318,6 +325,7 @@ Confirm that `src/osu-maps.js` exists before running `npm start` again.
 
 - Confirm that `SUPABASE_URL` and `SUPABASE_SECRET_KEY` are set.
 - Run the latest Supabase schema after pulling an update.
+- For `/verify-setting channel:...`, run [`supabase/verification_settings.sql`](supabase/verification_settings.sql) once to add `channel_id` to `osu_verification_settings`.
 - Keep the Supabase secret key on the server; never expose it in Discord or client-side code.
 
 ### Community alerts are not posting

@@ -9,11 +9,23 @@ const {
   OSU_REDIRECT_URI,
   VERIFY_PORT,
 } = require('./config');
+const { modeIcon, modeLabel, normalizeMode } = require('./mode-icons');
 
 const STATE_TTL_MS = 10 * 60 * 1000;
 
 function osuProfileUrl(user) {
   return user?.id ? `https://osu.ppy.sh/users/${encodeURIComponent(user.id)}` : null;
+}
+
+function osuModePath(mode) {
+  const normalized = normalizeMode(mode);
+  return normalized === 'catch' ? 'fruits' : normalized;
+}
+
+function osuModeProfileUrl(user, mode) {
+  const profileUrl = osuProfileUrl(user);
+  const modePath = osuModePath(mode);
+  return profileUrl && modePath ? `${profileUrl}/${encodeURIComponent(modePath)}` : profileUrl;
 }
 
 function osuCoverUrl(user) {
@@ -34,6 +46,91 @@ function roleName(role) {
 
 function botHighestRoleName(member) {
   return member?.roles?.highest?.name ? `**${member.roles.highest.name}**` : 'Alren\'s highest role';
+}
+
+function countryFlag(countryCode) {
+  const code = String(countryCode || '').toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) return '';
+  return [...code]
+    .map((letter) => String.fromCodePoint(0x1f1e6 + letter.charCodeAt(0) - 65))
+    .join('');
+}
+
+function formatRank(rank) {
+  const value = Number(rank);
+  return Number.isFinite(value) && value > 0
+    ? `#${Math.trunc(value).toLocaleString('en-US')}`
+    : 'Unranked';
+}
+
+function preferredMode(osuUser) {
+  return osuUser?.playmode || osuUser?.statistics?.mode || 'osu';
+}
+
+function modeStatistics(osuUser, mode) {
+  const modePath = osuModePath(mode);
+  return osuUser?.statistics
+    || osuUser?.statistics_rulesets?.[mode]
+    || osuUser?.statistics_rulesets?.[modePath]
+    || null;
+}
+
+function countryName(osuUser) {
+  const code = osuUser?.country_code;
+  const flag = countryFlag(code);
+  const name = osuUser?.country?.name || code || 'Unknown';
+  return flag ? `${flag} ${name}` : name;
+}
+
+function createVerificationCompleteEmbed({
+  botAvatarUrl,
+  guildName,
+  nicknameUpdated,
+  osuUser,
+  role,
+}) {
+  const mode = preferredMode(osuUser);
+  const stats = modeStatistics(osuUser, mode);
+  const profileUrl = osuModeProfileUrl(osuUser, mode) || osuProfileUrl(osuUser);
+  const nicknameNotice = nicknameUpdated
+    ? 'Your Discord nickname was updated to your osu! username.'
+    : 'Your nickname was unchanged because Discord did not allow Alren to edit it in this server.';
+  const embed = new EmbedBuilder()
+    .setColor(0x22c55e)
+    .setAuthor({
+      name: `${guildName} • osu! verification`,
+      ...(botAvatarUrl ? { iconURL: botAvatarUrl } : {}),
+    })
+    .setTitle(`✅ ${osuUser.username} verified`)
+    .setURL(profileUrl)
+    .setDescription(`You are verified as **${osuUser.username}** and received the **${role.name}** role.`)
+    .addFields(
+      { name: '👤 Player', value: `[${osuUser.username}](${profileUrl})`, inline: true },
+      { name: `${modeIcon(mode)} Rank mode`, value: modeLabel(mode), inline: true },
+      { name: '🌍 Country', value: countryName(osuUser), inline: true },
+      { name: '⭐ Global rank', value: formatRank(stats?.global_rank), inline: true },
+      { name: '🏳️ Country rank', value: formatRank(stats?.country_rank), inline: true },
+      { name: '🏷️ Verified role', value: role.name, inline: true },
+      { name: '🔗 Profile', value: `[Open osu! profile ↗](${profileUrl})` },
+      { name: '✏️ Discord nickname', value: nicknameNotice },
+    )
+    .setFooter({ text: `osu! user #${osuUser.id} • Verified by Alren` })
+    .setTimestamp();
+  addProfileArtwork(embed, osuUser, botAvatarUrl);
+  return embed;
+}
+
+function createVerificationSettingsEmbed({ channelId, roleId }) {
+  return new EmbedBuilder()
+    .setColor(roleId ? 0x22c55e : 0x5865f2)
+    .setTitle('✅ osu! verification settings')
+    .setDescription('Use `/setup` or `/verify-setting` to update these values.')
+    .addFields(
+      { name: '🏷️ Verified role', value: roleId ? `<@&${roleId}>` : 'Not configured', inline: true },
+      { name: '📣 Result channel', value: channelId ? `<#${channelId}>` : 'Not configured', inline: true },
+    )
+    .setFooter({ text: 'Members can verify with /verify' })
+    .setTimestamp();
 }
 
 function createVerificationMessage({ authorizationUrl, botAvatarUrl, guildName, osuProfile, welcome = false }) {
@@ -258,31 +355,38 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
         ? `Welcome, ${osuUser.username}. Your Discord nickname and ${result.role.name} role have been set.`
         : `Welcome, ${osuUser.username}. Your ${result.role.name} role has been set. Discord did not allow Alren to change your nickname because of server permissions or role order.`;
       response.end(htmlPage('Verification complete!', completionMessage, true));
-      const nicknameNotice = result.nicknameUpdated
-        ? 'Your Discord nickname was updated to your osu! username.'
-        : 'Your nickname was unchanged because Discord did not allow Alren to edit it in this server.';
       await bot.users.fetch(pending.discord_user_id).then((verifiedUser) => {
-        const completionEmbed = new EmbedBuilder()
-          .setColor(0x22c55e)
-          .setAuthor({
-            name: `${result.guildName} • osu! verification`,
-            ...(bot.user?.displayAvatarURL?.() ? { iconURL: bot.user.displayAvatarURL() } : {}),
-          })
-          .setTitle('✅ Verification complete')
-          .setURL(osuProfileUrl(osuUser))
-          .setDescription(`You are verified as **${osuUser.username}** and received the **${result.role.name}** role.`)
-          .addFields(
-            { name: '🎮 osu! profile', value: `[${osuUser.username}](${osuProfileUrl(osuUser)})`, inline: true },
-            { name: '🏷️ Verified role', value: result.role.name, inline: true },
-            { name: '✏️ Discord nickname', value: nicknameNotice },
-          )
-          .setFooter({ text: `osu! user #${osuUser.id} • Verified by Alren` })
-          .setTimestamp();
-        addProfileArtwork(completionEmbed, osuUser, bot.user?.displayAvatarURL?.());
+        const completionEmbed = createVerificationCompleteEmbed({
+          botAvatarUrl: bot.user?.displayAvatarURL?.(),
+          guildName: result.guildName,
+          nicknameUpdated: result.nicknameUpdated,
+          osuUser,
+          role: result.role,
+        });
         return verifiedUser.send({ embeds: [completionEmbed] });
       }).catch((error) => {
         console.warn('Could not send private verification result:', error.message);
       });
+      try {
+        const settings = await store.getVerificationSettings?.(pending.guild_id);
+        if (settings?.channel_id) {
+          const channel = await bot.channels.fetch(settings.channel_id);
+          if (!channel?.isTextBased() || typeof channel.send !== 'function') {
+            throw new Error(`Configured verification channel ${settings.channel_id} is unavailable.`);
+          }
+          await channel.send({
+            embeds: [createVerificationCompleteEmbed({
+              botAvatarUrl: bot.user?.displayAvatarURL?.(),
+              guildName: result.guildName,
+              nicknameUpdated: result.nicknameUpdated,
+              osuUser,
+              role: result.role,
+            })],
+          });
+        }
+      } catch (error) {
+        console.warn('Could not post public verification result:', error.message);
+      }
     } catch (error) {
       console.error('osu! verification callback failed:', error);
       response.writeHead(500, { 'content-type': 'text/html; charset=utf-8' });
@@ -456,6 +560,25 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
     return role;
   }
 
+  async function configureVerificationSettings(guild, { channel, role }) {
+    const current = store.getVerificationSettings
+      ? await store.getVerificationSettings(guild.id).catch((error) => {
+        throw new Error(`Could not read verification settings. Apply the latest Supabase schema. ${error.message}`);
+      }) || {}
+      : { role_id: await store.getVerificationRole(guild.id) };
+    let roleId = current.role_id;
+    if (role) {
+      await validateAssignableRole(guild, role);
+      roleId = role.id;
+    }
+    const channelId = channel?.id || current.channel_id || null;
+    if (!roleId) {
+      throw new Error('Select a verified role the first time, for example `/verify-setting role:@Verified channel:#verify-log`.');
+    }
+    await store.saveVerificationSettings(guild.id, { channelId, roleId });
+    return { channelId, roleId };
+  }
+
   async function setVerificationRole(message, selectedRole) {
     if (!message.inGuild()) {
       await message.reply('Use this command in a Discord server.');
@@ -490,15 +613,41 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
     await message.reply(`The current osu! verification role is <@&${roleId}>.`);
   }
 
+  async function showVerificationSettings(message) {
+    if (!message.inGuild()) return;
+    let settings;
+    try {
+      settings = store.getVerificationSettings
+        ? await store.getVerificationSettings(message.guildId)
+        : { role_id: await store.getVerificationRole(message.guildId) };
+    } catch (error) {
+      await message.reply(`Could not read verification settings. Apply the latest Supabase schema.\nReason: ${error.message}`);
+      return;
+    }
+    await message.reply({
+      embeds: [createVerificationSettingsEmbed({
+        channelId: settings?.channel_id,
+        roleId: settings?.role_id,
+      })],
+    });
+  }
+
   return {
     begin,
+    configureVerificationSettings,
     configureVerificationRole,
     sendWelcomeVerification,
     setVerificationRole,
     showStatus,
+    showVerificationSettings,
     showVerificationRole,
     startServer,
   };
 }
 
-module.exports = { createOsuVerificationService, createVerificationMessage };
+module.exports = {
+  createOsuVerificationService,
+  createVerificationCompleteEmbed,
+  createVerificationMessage,
+  createVerificationSettingsEmbed,
+};

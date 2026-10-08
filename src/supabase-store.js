@@ -85,6 +85,17 @@ function createSupabaseStore({ url, secretKey }) {
     return rows[0]?.role_id ?? null;
   }
 
+  async function getVerificationSettings(guildId) {
+    const rows = await request('osu_verification_settings', {
+      params: {
+        select: 'role_id,channel_id',
+        guild_id: `eq.${guildId}`,
+        limit: '1',
+      },
+    });
+    return rows[0] ?? null;
+  }
+
   async function saveVerificationRole(guildId, roleId) {
     await request('osu_verification_settings', {
       method: 'POST',
@@ -92,6 +103,20 @@ function createSupabaseStore({ url, secretKey }) {
       params: { on_conflict: 'guild_id' },
       body: {
         guild_id: guildId,
+        role_id: roleId,
+        updated_at: new Date().toISOString(),
+      },
+    });
+  }
+
+  async function saveVerificationSettings(guildId, { channelId, roleId }) {
+    await request('osu_verification_settings', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      params: { on_conflict: 'guild_id' },
+      body: {
+        guild_id: guildId,
+        channel_id: channelId,
         role_id: roleId,
         updated_at: new Date().toISOString(),
       },
@@ -230,6 +255,7 @@ function createSupabaseStore({ url, secretKey }) {
     findOtherOwner,
     getVerification,
     getVerificationRole,
+    getVerificationSettings,
     getMapSettings,
     getCommunityAlertSettings,
     hasPostedMap,
@@ -239,6 +265,7 @@ function createSupabaseStore({ url, secretKey }) {
     markMapPosted,
     saveVerification,
     saveVerificationRole,
+    saveVerificationSettings,
     saveMapSettings,
     saveCommunityAlertSettings,
   };

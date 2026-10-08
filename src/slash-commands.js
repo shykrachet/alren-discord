@@ -78,6 +78,10 @@ const OSU_VERIFY_STATUS_COMMAND = new SlashCommandBuilder()
   .setName('osuverify-status')
   .setDescription('Show your verified osu! account privately.');
 
+const VERIFY_STATUS_COMMAND = new SlashCommandBuilder()
+  .setName('verify-status')
+  .setDescription('Show your verified osu! account privately.');
+
 const QUICK_VERIFY_COMMAND = new SlashCommandBuilder()
   .setName('verify')
   .setDescription('ยืนยันบัญชี osu! ด้วยปุ่ม OAuth แบบส่วนตัว')
@@ -86,17 +90,17 @@ const QUICK_VERIFY_COMMAND = new SlashCommandBuilder()
     .setDescription('ไม่ใส่ก็ได้ ระบบจะตรวจบัญชีจาก osu! ให้อัตโนมัติ')
     .setRequired(false));
 
-const VERIFY_ROLE_COMMAND = new SlashCommandBuilder()
-  .setName('verify-role')
-  .setDescription('Set the osu! verification role privately.')
+const VERIFY_SETTINGS_COMMAND = new SlashCommandBuilder()
+  .setName('verify-setting')
+  .setDescription('Configure osu! verification role and result channel privately.')
   .addRoleOption((option) => option
     .setName('role')
     .setDescription('The role verified members receive')
-    .setRequired(true));
-
-const VERIFY_ROLE_STATUS_COMMAND = new SlashCommandBuilder()
-  .setName('verify-role-status')
-  .setDescription('Show the configured verification role privately.');
+    .setRequired(false))
+  .addChannelOption((option) => option
+    .setName('channel')
+    .setDescription('Channel that receives verification profile summaries')
+    .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement));
 
 const OSU_MAP_COMMAND = new SlashCommandBuilder()
   .setName('osumap')
@@ -125,6 +129,10 @@ const OSU_MAP_SETTINGS_COMMAND = new SlashCommandBuilder()
     .setName('channel')
     .setDescription('Channel that receives automatic beatmap posts')
     .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement));
+
+const OSU_MAP_STATUS_COMMAND = new SlashCommandBuilder()
+  .setName('osumap-status')
+  .setDescription('Show the configured osu! beatmap feed settings privately.');
 
 const QUICK_MAP_COMMAND = new SlashCommandBuilder()
   .setName('map')
@@ -157,6 +165,10 @@ const SETUP_COMMAND = new SlashCommandBuilder()
     .setName('verify_role')
     .setDescription('ยศที่จะมอบให้สมาชิกหลัง Verify สำเร็จ'))
   .addChannelOption((option) => option
+    .setName('verify_channel')
+    .setDescription('ห้องสำหรับแสดงข้อมูลหลัง Verify สำเร็จ')
+    .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+  .addChannelOption((option) => option
     .setName('beatmap_channel')
     .setDescription('ห้องสำหรับส่ง beatmap อัตโนมัติ')
     .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
@@ -185,11 +197,12 @@ const COMMANDS = [
   QUICK_HELP_COMMAND.toJSON(),
   OSU_VERIFY_COMMAND.toJSON(),
   OSU_VERIFY_STATUS_COMMAND.toJSON(),
+  VERIFY_STATUS_COMMAND.toJSON(),
   QUICK_VERIFY_COMMAND.toJSON(),
-  VERIFY_ROLE_COMMAND.toJSON(),
-  VERIFY_ROLE_STATUS_COMMAND.toJSON(),
+  VERIFY_SETTINGS_COMMAND.toJSON(),
   OSU_MAP_COMMAND.toJSON(),
   OSU_MAP_SETTINGS_COMMAND.toJSON(),
+  OSU_MAP_STATUS_COMMAND.toJSON(),
   QUICK_MAP_COMMAND.toJSON(),
   COMMUNITY_ALERT_SETTINGS_COMMAND.toJSON(),
   SETUP_COMMAND.toJSON(),
@@ -245,7 +258,28 @@ function commandError(prefix, error) {
   return `${prefix}\nReason: ${errorReason(error)}`;
 }
 
-function createSetupEmbed({ alerts, map, roleId, updated }) {
+function createMapStatusEmbed(map) {
+  const configured = Boolean(map?.channel_id);
+  return new EmbedBuilder()
+    .setColor(configured ? 0x22c55e : 0x5865f2)
+    .setTitle('🎵 osu! beatmap feed settings')
+    .setDescription(configured
+      ? 'Automatic beatmap feed is configured for this server.'
+      : 'Automatic beatmap feed is not configured yet. Use `/setup` or `/osumap-settings`.')
+    .addFields(
+      { name: '📣 Channel', value: map?.channel_id ? `<#${map.channel_id}>` : 'Not configured', inline: true },
+      { name: '🔎 Filters', value: describeFilters({ mode: map?.mode_filter || 'any', status: map?.status_filter || 'ranked' }), inline: true },
+    )
+    .setFooter({ text: 'Configure with /setup or /osumap-settings' })
+    .setTimestamp();
+}
+
+function createSetupEmbed({
+  alerts, map, roleId, updated, verifyChannelId,
+}) {
+  const verifyText = roleId || verifyChannelId
+    ? `${roleId ? `<@&${roleId}>` : 'No role'}\n${verifyChannelId ? `<#${verifyChannelId}>` : 'No result channel'}`
+    : 'ยังไม่ได้ตั้งค่า';
   const mapText = map?.channel_id
     ? `<#${map.channel_id}>\n${describeFilters({ mode: map.mode_filter, status: map.status_filter })}`
     : 'ยังไม่ได้ตั้งค่า';
@@ -259,7 +293,7 @@ function createSetupEmbed({ alerts, map, roleId, updated }) {
       ? 'ระบบพร้อมใช้งานตามค่าด้านล่าง'
       : 'ใส่เฉพาะตัวเลือกที่ต้องการเปลี่ยน แล้วเรียก `/setup` อีกครั้ง')
     .addFields(
-      { name: '✅ Verify role', value: roleId ? `<@&${roleId}>` : 'ยังไม่ได้ตั้งค่า', inline: true },
+      { name: '✅ Verify', value: verifyText, inline: true },
       { name: '🎵 Beatmap feed', value: mapText, inline: true },
       { name: '🔔 BN alerts', value: alertsText, inline: true },
     )
@@ -354,16 +388,28 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       try {
         const role = interaction.options.getRole('verify_role');
+        const verifyChannel = interaction.options.getChannel('verify_channel');
         const beatmapChannel = interaction.options.getChannel('beatmap_channel');
         const mapStatus = interaction.options.getString('map_status');
         const mapMode = interaction.options.getString('map_mode');
         const alertsChannel = interaction.options.getChannel('alerts_channel');
         const bnMode = interaction.options.getString('bn_mode');
+        const hasVerifyUpdate = Boolean(role || verifyChannel);
         const hasMapUpdate = Boolean(beatmapChannel || mapStatus || mapMode);
         const hasAlertUpdate = Boolean(alertsChannel || bnMode);
-        const updated = Boolean(role || hasMapUpdate || hasAlertUpdate);
+        const updated = Boolean(hasVerifyUpdate || hasMapUpdate || hasAlertUpdate);
 
-        if (role) await osuVerification.configureVerificationRole(interaction.guild, role);
+        let currentVerify = await store.getVerificationSettings(interaction.guildId);
+        if (hasVerifyUpdate) {
+          currentVerify = await osuVerification.configureVerificationSettings(interaction.guild, {
+            channel: verifyChannel,
+            role,
+          });
+          currentVerify = {
+            channel_id: currentVerify.channelId,
+            role_id: currentVerify.roleId,
+          };
+        }
 
         let currentMap = await store.getMapSettings(interaction.guildId);
         if (hasMapUpdate) {
@@ -392,9 +438,14 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
           });
         }
 
-        const roleId = role?.id || await store.getVerificationRole(interaction.guildId);
         await interaction.editReply({
-          embeds: [createSetupEmbed({ alerts: currentAlerts, map: currentMap, roleId, updated })],
+          embeds: [createSetupEmbed({
+            alerts: currentAlerts,
+            map: currentMap,
+            roleId: currentVerify?.role_id,
+            updated,
+            verifyChannelId: currentVerify?.channel_id,
+          })],
         });
       } catch (error) {
         console.error('Quick setup failed:', error.message);
@@ -453,6 +504,51 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
       return;
     }
 
+    if (interaction.commandName === 'verify-setting') {
+      if (!interaction.inGuild()) {
+        await interaction.reply({
+          content: 'This command can only be used in a server.',
+          flags: MessageFlags.Ephemeral,
+        });
+        scheduleReplyDeletion(interaction);
+        return;
+      }
+      if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageGuild)) {
+        await interaction.reply({
+          content: 'You need the Manage Server permission to change verification settings.',
+          flags: MessageFlags.Ephemeral,
+        });
+        scheduleReplyDeletion(interaction);
+        return;
+      }
+
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const context = createPrivateCommandContext(interaction);
+      try {
+        const role = interaction.options.getRole('role');
+        const channel = interaction.options.getChannel('channel');
+        if (role || channel) {
+          const settings = await osuVerification.configureVerificationSettings(interaction.guild, {
+            channel,
+            role,
+          });
+          await interaction.editReply({
+            embeds: [new EmbedBuilder()
+              .setColor(0x22c55e)
+              .setTitle('✅ Verification settings saved')
+              .setDescription(`Verified role: <@&${settings.roleId}>\nResult channel: ${settings.channelId ? `<#${settings.channelId}>` : 'Not configured'}`)],
+          });
+        } else {
+          await osuVerification.showVerificationSettings(context);
+        }
+      } catch (error) {
+        console.error('Verification settings failed:', error.message);
+        await interaction.editReply(commandError('I could not save verification settings.', error));
+      }
+      scheduleReplyDeletion(interaction);
+      return;
+    }
+
     if (interaction.commandName === 'osumap-settings') {
       if (!interaction.inGuild()) {
         await interaction.reply({
@@ -487,6 +583,28 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
       } catch (error) {
         console.error('Beatmap settings failed:', error.message);
         await interaction.editReply(commandError('I could not save the beatmap feed settings.', error));
+      }
+      scheduleReplyDeletion(interaction);
+      return;
+    }
+
+    if (interaction.commandName === 'osumap-status') {
+      if (!interaction.inGuild()) {
+        await interaction.reply({
+          content: 'This command can only be used in a server.',
+          flags: MessageFlags.Ephemeral,
+        });
+        scheduleReplyDeletion(interaction);
+        return;
+      }
+
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      try {
+        const map = await store.getMapSettings(interaction.guildId);
+        await interaction.editReply({ embeds: [createMapStatusEmbed(map)] });
+      } catch (error) {
+        console.error('Beatmap status failed:', error.message);
+        await interaction.editReply(commandError('I could not read the beatmap feed settings.', error));
       }
       scheduleReplyDeletion(interaction);
       return;
@@ -539,19 +657,15 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
       return;
     }
 
-    if (['osuverify', 'verify', 'osuverify-status', 'verify-role', 'verify-role-status'].includes(interaction.commandName)) {
+    if (['osuverify', 'verify', 'osuverify-status', 'verify-status'].includes(interaction.commandName)) {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const context = createPrivateCommandContext(interaction);
       try {
         if (['osuverify', 'verify'].includes(interaction.commandName)) {
           const optionName = interaction.commandName === 'verify' ? 'osu_id' : 'osu_user_id';
           await osuVerification.begin(context, interaction.options.getString(optionName) ?? undefined);
-        } else if (interaction.commandName === 'osuverify-status') {
+        } else if (['osuverify-status', 'verify-status'].includes(interaction.commandName)) {
           await osuVerification.showStatus(context);
-        } else if (interaction.commandName === 'verify-role') {
-          await osuVerification.setVerificationRole(context, interaction.options.getRole('role', true));
-        } else {
-          await osuVerification.showVerificationRole(context);
         }
       } catch (error) {
         console.error('Private verification command failed:', error.message);

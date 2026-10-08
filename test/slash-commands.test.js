@@ -35,6 +35,11 @@ test('registers global commands and removes legacy guild commands', async () => 
   assert.ok(calls[0].options.body.some((command) => command.name === 'help'));
   assert.ok(calls[0].options.body.some((command) => command.name === 'map'));
   assert.ok(calls[0].options.body.some((command) => command.name === 'setup'));
+  assert.equal(calls[0].options.body.some((command) => command.name === 'verify-role'), false);
+  assert.equal(calls[0].options.body.some((command) => command.name === 'verify-role-status'), false);
+  assert.ok(calls[0].options.body.some((command) => command.name === 'verify-setting'));
+  assert.ok(calls[0].options.body.some((command) => command.name === 'verify-status'));
+  assert.ok(calls[0].options.body.some((command) => command.name === 'osumap-status'));
   const mapSettingsCommand = calls[0].options.body.find((command) => command.name === 'osumap-settings');
   assert.deepEqual(mapSettingsCommand.options.map((option) => option.name), ['status', 'mode', 'channel']);
   assert.equal(mapSettingsCommand.options[2].type, 7);
@@ -149,6 +154,7 @@ test('osumap-settings reports the real configuration error', async () => {
 
 test('quick setup configures a selected verification role', async () => {
   const selectedRole = { id: 'verified-role' };
+  const selectedChannel = { id: 'verify-channel' };
   const configured = [];
   let reply;
   const interaction = {
@@ -171,53 +177,64 @@ test('quick setup configures a selected verification role', async () => {
   const handler = createInteractionHandler({
     osuMaps: {},
     osuVerification: {
-      async configureVerificationRole(...args) { configured.push(args); },
+      async configureVerificationSettings(...args) {
+        configured.push(args);
+        return { channelId: selectedChannel.id, roleId: selectedRole.id };
+      },
     },
     store: {
       isConfigured: true,
       getCommunityAlertSettings: async () => null,
       getMapSettings: async () => null,
-      getVerificationRole: async () => selectedRole.id,
+      getVerificationSettings: async () => ({ channel_id: selectedChannel.id, role_id: selectedRole.id }),
     },
   });
 
   await handler(interaction);
 
   assert.equal(configured.length, 1);
-  assert.equal(configured[0][1], selectedRole);
+  assert.equal(configured[0][1].role, selectedRole);
   assert.match(reply.embeds[0].toJSON().title, /บันทึก/);
 });
 
-test('passes the selected role from /verify-role to the verification service', async () => {
+test('verify-setting saves the selected role and channel', async () => {
   const selectedRole = { id: 'role' };
+  const selectedChannel = { id: 'channel-log' };
   const calls = [];
+  let reply;
   const interaction = {
     channelId: 'channel',
-    commandName: 'verify-role',
+    commandName: 'verify-setting',
     guild: { id: 'guild' },
     guildId: 'guild',
     inGuild: () => true,
     isChatInputCommand: () => true,
     member: {},
-    memberPermissions: {},
+    memberPermissions: { has: () => true },
     options: {
+      getChannel: () => selectedChannel,
       getRole: () => selectedRole,
     },
     user: { id: 'user' },
     async deferReply() {},
     async deleteReply() {},
-    async editReply() {},
+    async editReply(payload) { reply = payload; },
   };
   const handler = createInteractionHandler({
     osuVerification: {
-      async setVerificationRole(...args) { calls.push(args); },
+      async configureVerificationSettings(...args) {
+        calls.push(args);
+        return { channelId: selectedChannel.id, roleId: selectedRole.id };
+      },
     },
   });
 
   await handler(interaction);
 
   assert.equal(calls.length, 1);
-  assert.equal(calls[0][1], selectedRole);
+  assert.equal(calls[0][1].role, selectedRole);
+  assert.equal(calls[0][1].channel, selectedChannel);
+  assert.match(reply.embeds[0].toJSON().description, /<#channel-log>/);
 });
 
 test('passes rich verification status replies through to Discord', async () => {
@@ -231,7 +248,7 @@ test('passes rich verification status replies through to Discord', async () => {
     inGuild: () => true,
     isChatInputCommand: () => true,
     member: {},
-    memberPermissions: {},
+    memberPermissions: { has: () => true },
     options: {},
     user: { id: 'user' },
     async deferReply() {},
@@ -253,14 +270,15 @@ test('verification slash commands report service errors to the user', async () =
   let reply;
   const interaction = {
     channelId: 'channel',
-    commandName: 'verify-role',
+    commandName: 'verify-setting',
     guild: { id: 'guild' },
     guildId: 'guild',
     inGuild: () => true,
     isChatInputCommand: () => true,
     member: {},
-    memberPermissions: {},
+    memberPermissions: { has: () => true },
     options: {
+      getChannel: () => null,
       getRole: () => ({ id: 'role' }),
     },
     user: { id: 'user' },
@@ -270,7 +288,7 @@ test('verification slash commands report service errors to the user', async () =
   };
   const handler = createInteractionHandler({
     osuVerification: {
-      async setVerificationRole() {
+      async configureVerificationSettings() {
         throw new Error('The selected role must be lower than Alren.');
       },
     },
@@ -278,8 +296,36 @@ test('verification slash commands report service errors to the user', async () =
 
   await handler(interaction);
 
-  assert.match(reply, /I could not complete that verification request/);
+  assert.match(reply, /I could not save verification settings/);
   assert.match(reply, /Reason: The selected role must be lower than Alren/);
+});
+
+test('osumap-status shows configured beatmap feed settings', async () => {
+  let reply;
+  const interaction = {
+    channelId: 'channel',
+    commandName: 'osumap-status',
+    guildId: 'guild',
+    inGuild: () => true,
+    isChatInputCommand: () => true,
+    async deferReply() {},
+    async deleteReply() {},
+    async editReply(payload) { reply = payload; },
+  };
+  const handler = createInteractionHandler({
+    store: {
+      async getMapSettings() {
+        return { channel_id: 'beatmaps', mode_filter: 'mania', status_filter: 'ranked' };
+      },
+    },
+  });
+
+  await handler(interaction);
+
+  const embed = reply.embeds[0].toJSON();
+  assert.match(embed.title, /beatmap feed settings/);
+  assert.match(embed.fields[0].value, /<#beatmaps>/);
+  assert.match(embed.fields[1].value, /Mania|mania|osu!mania/);
 });
 
 test('help language dropdown updates the guide in place', async () => {

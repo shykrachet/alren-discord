@@ -1,6 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const { OSU_CLIENT_ID, OSU_CLIENT_SECRET } = require('./config');
-const { modeIcon, modeLabel } = require('./mode-icons');
+const { modeLabel } = require('./mode-icons');
 
 const OSU_API_URL = 'https://osu.ppy.sh/api/v2';
 const OSU_TOKEN_URL = 'https://osu.ppy.sh/oauth/token';
@@ -22,6 +22,8 @@ const STATUS_ICONS = {
   qualified: '✅',
   loved: '❤️',
 };
+const DEFAULT_FEED_INTERVAL_SECONDS = 30;
+const MAX_FEED_POSTS_PER_PASS = 10;
 
 function titleCase(value) {
   return value ? `${value[0].toUpperCase()}${value.slice(1)}` : 'Unknown';
@@ -43,11 +45,6 @@ function beatmapModes(beatmapset) {
 
 function mapModes(beatmapset) {
   return beatmapModes(beatmapset).map(modeLabel).join(', ') || 'Unknown';
-}
-
-function modeFieldName(beatmapset) {
-  const icons = beatmapModes(beatmapset).map(modeIcon).join(' ');
-  return icons ? `${icons} Modes` : '🎮 Modes';
 }
 
 function mapNominators(beatmapset) {
@@ -92,6 +89,24 @@ function searchableMetadata(metadata, queryKey) {
   return `[${name}](https://osu.ppy.sh/beatmapsets?${queryKey}=${encodeURIComponent(metadata.id)})`;
 }
 
+function mapDate(beatmapset) {
+  return Date.parse(beatmapset.ranked_date || beatmapset.last_updated || 0);
+}
+
+function feedStatuses(status) {
+  return status === 'all' ? STATUSES : [status];
+}
+
+function feedIntervalMs() {
+  const requestedSeconds = process.env.OSU_MAP_FEED_INTERVAL_SECONDS != null
+    ? Number(process.env.OSU_MAP_FEED_INTERVAL_SECONDS)
+    : Number(process.env.OSU_MAP_FEED_INTERVAL_MINUTES || DEFAULT_FEED_INTERVAL_SECONDS / 60) * 60;
+  const safeSeconds = Number.isFinite(requestedSeconds)
+    ? Math.min(Math.max(requestedSeconds, 30), 3600)
+    : DEFAULT_FEED_INTERVAL_SECONDS;
+  return safeSeconds * 1000;
+}
+
 function createMapEmbed(beatmapset) {
   if (!beatmapset?.id) throw new Error('Cannot create an embed without a beatmapset.');
 
@@ -109,7 +124,7 @@ function createMapEmbed(beatmapset) {
     .setDescription(`Mapped by ${mapper}\n[Open beatmap page ↗](${url})`)
     .addFields(
       { name: '🏷️ Status', value: statusLabel, inline: true },
-      { name: modeFieldName(beatmapset), value: mapModes(beatmapset), inline: true },
+      { name: '🎮 Modes', value: mapModes(beatmapset), inline: true },
       { name: '⭐ Difficulties', value: difficultySummary(beatmapset), inline: true },
       { name: '🎵 BPM', value: Number.isFinite(bpm) ? String(bpm) : 'Unknown', inline: true },
       { name: '⏱️ Length', value: mapLength(beatmapset), inline: true },
@@ -232,18 +247,23 @@ function createOsuMapService({
   }
 
   async function newestMap(filters) {
-    const statuses = filters.status === 'all' ? STATUSES : [filters.status];
-    const resultSets = await Promise.all(statuses.map((status) => searchMaps({
+    const resultSets = await Promise.all(feedStatuses(filters.status).map((status) => searchMaps({
       mode: filters.mode,
       status,
     })));
     return resultSets
       .flat()
-      .sort((left, right) => {
-        const leftDate = Date.parse(left.ranked_date || left.last_updated || 0);
-        const rightDate = Date.parse(right.ranked_date || right.last_updated || 0);
-        return rightDate - leftDate;
-      })[0] || null;
+      .sort((left, right) => mapDate(right) - mapDate(left))[0] || null;
+  }
+
+  async function feedCandidatesByStatus(filters) {
+    const entries = await Promise.all(feedStatuses(filters.status).map(async (status) => {
+      const maps = await searchMaps({ mode: filters.mode, status });
+      return [status, maps
+        .map((map) => ({ ...map, status: map.status || status }))
+        .sort((left, right) => mapDate(right) - mapDate(left))];
+    }));
+    return entries;
   }
 
   async function getRandomMap({ guildId, mode, status } = {}) {
@@ -274,10 +294,27 @@ function createOsuMapService({
     });
     await store.saveMapSettings(guildId, settings);
 
-    // Prime the feed so enabling it does not post an existing map as if it were new.
-    const map = await newestMap(settings);
-    if (map) await store.markMapPosted(guildId, map.id, map.status);
+    // Prime each watched status so enabling the feed does not post existing maps as if they were new.
+    const candidateGroups = await feedCandidatesByStatus(settings);
+    await Promise.all(candidateGroups.flatMap(([status, maps]) => {
+      const newest = maps[0];
+      return newest ? [store.markMapPosted(guildId, newest.id, newest.status || status)] : [];
+    }));
     return settings;
+  }
+
+  async function newFeedMaps(settings) {
+    const candidateGroups = await feedCandidatesByStatus(settings);
+    const unposted = [];
+    for (const [status, maps] of candidateGroups) {
+      for (const map of maps) {
+        if (await store.hasPostedMap(settings.guildId, map.id, map.status || status)) break;
+        unposted.push({ ...map, status: map.status || status });
+      }
+    }
+    return unposted
+      .sort((left, right) => mapDate(left) - mapDate(right))
+      .slice(0, MAX_FEED_POSTS_PER_PASS);
   }
 
   async function checkFeed(postMap) {
@@ -288,11 +325,12 @@ function createOsuMapService({
       for (const row of settingsRows || []) {
         const settings = normalizeSettings(row);
         try {
-          const mapSummary = await newestMap(settings);
-          if (!mapSummary || await store.hasPostedMap(settings.guildId, mapSummary.id, mapSummary.status)) continue;
-          const map = await getBeatmapset(mapSummary);
-          await postMap({ map, settings });
-          await store.markMapPosted(settings.guildId, mapSummary.id, mapSummary.status);
+          const mapSummaries = await newFeedMaps(settings);
+          for (const mapSummary of mapSummaries) {
+            const map = await getBeatmapset(mapSummary);
+            await postMap({ map, settings });
+            await store.markMapPosted(settings.guildId, mapSummary.id, mapSummary.status);
+          }
         } catch (error) {
           console.error(`Beatmap feed failed for server ${settings.guildId}:`, error.message);
         }
@@ -310,16 +348,12 @@ function createOsuMapService({
     }
     if (feedTimer) clearInterval(feedTimer);
 
-    const requestedMinutes = Number(process.env.OSU_MAP_FEED_INTERVAL_MINUTES || 15);
-    const intervalMinutes = Number.isFinite(requestedMinutes)
-      ? Math.min(Math.max(requestedMinutes, 5), 60)
-      : 15;
     const run = () => checkFeed(postMap).catch((error) => {
       console.error('Beatmap feed check failed:', error.message);
     });
 
     run();
-    feedTimer = setInterval(run, intervalMinutes * 60 * 1000);
+    feedTimer = setInterval(run, feedIntervalMs());
     feedTimer.unref?.();
     return () => {
       clearInterval(feedTimer);

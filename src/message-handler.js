@@ -51,9 +51,9 @@ function createHelpEmbed(language = 'th') {
       .setDescription('Start with `/help`, `/verify`, `/map`, and `/setup`. Existing long-form and `!` commands remain available.')
       .addFields(
         { name: '💬 Private chat', value: '`/alren message:...` or `!alren ...`\n`/alrenclear` or `!alrenclear`' },
-        { name: '✅ osu! verification', value: '`/verify` — sign in with osu! OAuth automatically\n`/osuverify-status` or `!osuverify-status`' },
-        { name: '🎵 Beatmaps', value: '`/map` — post a random beatmap with cover artwork\n`/osumap-settings status mode channel` or `!osumap-settings [status] [mode]`' },
-        { name: '🛠️ Server setup', value: '`/setup` — configure Verify, Beatmap, and BN alerts\nExisting setup commands remain available' },
+        { name: '✅ osu! verification', value: '`/verify` — sign in with osu! OAuth automatically\n`/verify-status` or `!verify-status`' },
+        { name: '🎵 Beatmaps', value: '`/map` — post a random beatmap with cover artwork\n`/osumap-settings status mode channel`\n`/osumap-status`' },
+        { name: '🛠️ Server setup', value: '`/setup` — configure Verify role/channel, Beatmap, and BN alerts\n`/verify-setting role channel` for verification only' },
         { name: 'ℹ️ Utilities', value: '`/help language:English` or `!alrenhelp en`\n`/ping` or `!ping`' },
         { name: '🌐 Full command guide', value: `[Open the web guide](${COMMANDS_URL})` },
       )
@@ -65,9 +65,9 @@ function createHelpEmbed(language = 'th') {
     .setDescription('เริ่มง่ายด้วย `/help`, `/verify`, `/map` และ `/setup` ส่วนคำสั่งแบบยาวกับคำสั่ง `!` ยังใช้ได้ทั้งหมด')
     .addFields(
       { name: '💬 แชทส่วนตัว', value: '`/alren message:...` หรือ `!alren ...`\n`/alrenclear` หรือ `!alrenclear`' },
-      { name: '✅ ยืนยันบัญชี osu!', value: '`/verify` — กดปุ่ม OAuth แล้วระบบดึงบัญชีให้อัตโนมัติ\n`/osuverify-status` หรือ `!osuverify-status`' },
-      { name: '🎵 Beatmap', value: '`/map` — สุ่ม beatmap พร้อมรูปปก\n`/osumap-settings status mode channel` หรือ `!osumap-settings [status] [mode]`' },
-      { name: '🛠️ ตั้งค่าเซิร์ฟเวอร์', value: '`/setup` — ตั้ง Verify, Beatmap และ BN ในคำสั่งเดียว\nคำสั่งตั้งค่าแบบเดิมยังใช้ได้' },
+      { name: '✅ ยืนยันบัญชี osu!', value: '`/verify` — กดปุ่ม OAuth แล้วระบบดึงบัญชีให้อัตโนมัติ\n`/verify-status` หรือ `!verify-status`' },
+      { name: '🎵 Beatmap', value: '`/map` — สุ่ม beatmap พร้อมรูปปก\n`/osumap-settings status mode channel`\n`/osumap-status`' },
+      { name: '🛠️ ตั้งค่าเซิร์ฟเวอร์', value: '`/setup` — ตั้ง Verify role/channel, Beatmap และ BN ในคำสั่งเดียว\n`/verify-setting role channel` สำหรับ verify เท่านั้น' },
       { name: 'ℹ️ เครื่องมือ', value: '`/help language:ไทย` หรือ `!alrenhelp th`\n`/ping` หรือ `!ping`' },
       { name: '🌐 คู่มือบนเว็บ', value: `[เปิดหน้า commands](${COMMANDS_URL})` },
     )
@@ -134,10 +134,11 @@ function formatHelp() {
     '`/alren` or `!alren <message>` — private AI chat',
     '`/alrenclear` or `!alrenclear` — clear chat memory',
     '`/osuverify` or `!osuverify` — verify through osu! OAuth',
-    '`/osuverify-status` or `!osuverify-status` — verification status',
-    '`/verify-role` or `!verify-role @role` — configure the verified role',
+    '`/verify-status` or `!verify-status` — verification status',
+    '`/verify-setting` or `!verify-setting @role` — configure verification',
     '`/osumap` or `!osumap [status] [mode]` — random beatmap',
     '`/osumap-settings` or `!osumap-settings [status] [mode]` — beatmap feed',
+    '`/osumap-status` or `!osumap-status` — beatmap feed status',
     '`/community-alert-settings` or `!community-alert-settings #channel [mode]` — community alerts',
     '`/ping` or `!ping`',
   ].join('\n');
@@ -235,12 +236,12 @@ function createMessageHandler({ bot, chat, osuMaps, osuVerification, store }) {
       return;
     }
 
-    if (command === 'osuverify-status') {
+    if (command === 'osuverify-status' || command === 'verify-status') {
       await osuVerification.showStatus(message);
       return;
     }
 
-    if (command === 'verify-role') {
+    if (command === 'verify-role' || command === 'verify-setting') {
       await osuVerification.setVerificationRole(message);
       return;
     }
@@ -260,6 +261,25 @@ function createMessageHandler({ bot, chat, osuMaps, osuVerification, store }) {
         await message.reply({ embeds: [createMapEmbed(result.map)] });
       } catch (error) {
         await message.reply({ embeds: [createStatusEmbed('Beatmap unavailable', error.message, ERROR_COLOR)] });
+      }
+      return;
+    }
+
+    if (command === 'osumap-status') {
+      if (!message.inGuild()) return;
+      try {
+        const settings = await store.getMapSettings(message.guildId);
+        await message.reply({
+          embeds: [createStatusEmbed(
+            '🎵 Beatmap feed settings',
+            settings?.channel_id
+              ? `Channel: <#${settings.channel_id}>\nStatus: **${settings.status_filter || 'ranked'}**\nMode: **${settings.mode_filter || 'any'}**`
+              : 'Automatic beatmap feed is not configured yet.',
+            settings?.channel_id ? SUCCESS_COLOR : ALREN_COLOR,
+          )],
+        });
+      } catch (error) {
+        await message.reply({ embeds: [createStatusEmbed('Could not read settings', error.message, ERROR_COLOR)] });
       }
       return;
     }

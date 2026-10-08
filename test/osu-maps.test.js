@@ -63,12 +63,37 @@ function apiFetch(beatmapsets, requests) {
   };
 }
 
+function feedApiFetch(beatmapsByStatus, requests = []) {
+  const allMaps = Object.values(beatmapsByStatus).flat();
+  return async (url, options) => {
+    requests.push({ url: String(url), options });
+    if (String(url).endsWith('/oauth/token')) {
+      return {
+        ok: true,
+        json: async () => ({ access_token: 'token', expires_in: 3600 }),
+      };
+    }
+    const requestUrl = new URL(url);
+    if (requestUrl.pathname.endsWith('/beatmapsets/search')) {
+      return {
+        ok: true,
+        json: async () => ({ beatmapsets: beatmapsByStatus[requestUrl.searchParams.get('s')] || [] }),
+      };
+    }
+    const id = Number(requestUrl.pathname.split('/').at(-1));
+    return {
+      ok: true,
+      json: async () => allMaps.find((beatmapset) => beatmapset.id === id),
+    };
+  };
+}
+
 test('createMapEmbed presents the beatmap metadata', () => {
   const embed = createMapEmbed(beatmapsetTemplate(123)).toJSON();
   assert.equal(embed.title, 'Artist — Title');
   assert.equal(embed.url, 'https://osu.ppy.sh/beatmapsets/123');
   assert.equal(embed.fields.find((field) => field.name.includes('Status')).value, '⏫ Ranked');
-  assert.equal(embed.fields.find((field) => field.name.includes('Modes')).name, '🎯 🎹 Modes');
+  assert.equal(embed.fields.find((field) => field.name.includes('Modes')).name, '🎮 Modes');
   assert.equal(embed.fields.find((field) => field.name.includes('Modes')).value, '🎯 osu!, 🎹 osu!mania');
   assert.equal(embed.fields.find((field) => field.name.includes('Difficulties')).value, '2.50★ – 5.75★ • 2 difficulties');
   assert.equal(embed.fields.find((field) => field.name.includes('Nominators')).value, '[Nominator](https://osu.ppy.sh/users/42)');
@@ -95,7 +120,7 @@ test('createMapEmbed uses synced img/modes application emoji icons', async () =>
   await syncApplicationModeEmojis(application);
   const embed = createMapEmbed(beatmapsetTemplate(123)).toJSON();
 
-  assert.equal(embed.fields.find((field) => field.name.includes('Modes')).name, '<:alren_mode_osu:10> <:alren_mode_mania:20> Modes');
+  assert.equal(embed.fields.find((field) => field.name.includes('Modes')).name, '🎮 Modes');
   assert.equal(embed.fields.find((field) => field.name.includes('Modes')).value, '<:alren_mode_osu:10> osu!, <:alren_mode_mania:20> osu!mania');
 });
 
@@ -159,4 +184,82 @@ test('configureFeed saves settings and primes the latest map', async () => {
   });
   assert.deepEqual(saved, [['guild', settings]]);
   assert.deepEqual(posted, [['guild', 789, 'ranked']]);
+});
+
+test('configureFeed primes every status for realtime all-mode feeds', async () => {
+  const posted = [];
+  const service = createOsuMapService({
+    clientId: '123',
+    clientSecret: 'secret',
+    fetchImpl: feedApiFetch({
+      ranked: [beatmapsetTemplate(100, 'ranked')],
+      qualified: [beatmapsetTemplate(200, 'qualified')],
+      loved: [beatmapsetTemplate(300, 'loved')],
+    }),
+    store: {
+      isConfigured: true,
+      getMapSettings: async () => null,
+      saveMapSettings: async () => {},
+      markMapPosted: async (...args) => posted.push(args),
+    },
+  });
+
+  await service.configureFeed({
+    channelId: 'channel',
+    guildId: 'guild',
+    mode: 'any',
+    status: 'all',
+  });
+
+  assert.deepEqual(posted, [
+    ['guild', 100, 'ranked'],
+    ['guild', 200, 'qualified'],
+    ['guild', 300, 'loved'],
+  ]);
+});
+
+test('startFeed posts all new all-mode maps before the previous watermark', async () => {
+  const delivered = [];
+  const marked = [];
+  const service = createOsuMapService({
+    clientId: '123',
+    clientSecret: 'secret',
+    fetchImpl: feedApiFetch({
+      ranked: [
+        { ...beatmapsetTemplate(101, 'ranked'), ranked_date: '2026-09-17T00:02:00Z' },
+        { ...beatmapsetTemplate(100, 'ranked'), ranked_date: '2026-09-17T00:00:00Z' },
+      ],
+      qualified: [
+        { ...beatmapsetTemplate(201, 'qualified'), ranked_date: '2026-09-17T00:03:00Z' },
+        { ...beatmapsetTemplate(200, 'qualified'), ranked_date: '2026-09-17T00:01:00Z' },
+      ],
+      loved: [
+        { ...beatmapsetTemplate(300, 'loved'), ranked_date: '2026-09-17T00:00:30Z' },
+      ],
+    }),
+    store: {
+      isConfigured: true,
+      listMapSettings: async () => [{
+        channel_id: 'channel',
+        guild_id: 'guild',
+        mode_filter: 'any',
+        status_filter: 'all',
+      }],
+      hasPostedMap: async (guildId, beatmapsetId) => [100, 200, 300].includes(Number(beatmapsetId)),
+      markMapPosted: async (...args) => marked.push(args),
+    },
+  });
+
+  const stop = service.startFeed(async ({ map }) => {
+    delivered.push(map.id);
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  stop();
+
+  assert.deepEqual(delivered, [101, 201]);
+  assert.deepEqual(marked, [
+    ['guild', 101, 'ranked'],
+    ['guild', 201, 'qualified'],
+  ]);
 });
