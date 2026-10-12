@@ -309,7 +309,7 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
         return;
       }
       if (!store?.isConfigured) {
-        await interaction.reply({ content: 'ต้องตั้งค่า Supabase ก่อนใช้งาน `/setup`', flags: MessageFlags.Ephemeral });
+        await interaction.reply({ content: 'ต้องตั้งค่าฐานข้อมูลก่อนใช้งาน `/setup`', flags: MessageFlags.Ephemeral });
         return;
       }
 
@@ -409,7 +409,7 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
       }
       if (!store?.isConfigured) {
         await interaction.reply({
-          content: 'Community alerts need Supabase. Add SUPABASE_URL and SUPABASE_SECRET_KEY first.',
+          content: 'Community alerts need a configured database.',
           flags: MessageFlags.Ephemeral,
         });
         scheduleReplyDeletion(interaction);

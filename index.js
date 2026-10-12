@@ -3,8 +3,7 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, MessageFlags } = require('discord.js');
 const OpenAI = require('openai');
 const {
-  AI_BASE_URL, DISCORD_TOKEN, OPENAI_API_KEY,
-  SUPABASE_SECRET_KEY, SUPABASE_URL,
+  AI_BASE_URL, DISCORD_TOKEN, OPENAI_API_KEY, SQLITE_PATH,
 } = require('./src/config');
 const { createChatService } = require('./src/chat');
 const {
@@ -20,7 +19,7 @@ const {
   registerGuildSlashCommands,
   registerSlashCommands,
 } = require('./src/slash-commands');
-const { createSupabaseStore } = require('./src/supabase-store');
+const { createSqliteStore } = require('./src/sqlite-store');
 
 const bot = new Client({
   intents: [
@@ -35,7 +34,7 @@ const openai = OPENAI_API_KEY
   ? new OpenAI({ apiKey: OPENAI_API_KEY, ...(AI_BASE_URL && { baseURL: AI_BASE_URL }) })
   : null;
 const chat = openai ? createChatService(openai) : null;
-const verificationStore = createSupabaseStore({ url: SUPABASE_URL, secretKey: SUPABASE_SECRET_KEY });
+const verificationStore = createSqliteStore({ dbPath: SQLITE_PATH });
 const communityAlerts = createCommunityAlertsService();
 const osuMaps = createOsuMapService({ store: verificationStore });
 const osuVerification = createOsuVerificationService({
@@ -95,7 +94,7 @@ bot.once('clientReady', async () => {
       }
     });
   } else {
-    console.warn('Community notifications are disabled: configure Supabase, then use /setup alerts.');
+    console.warn('Community notifications are disabled: database is not configured.');
   }
 });
 

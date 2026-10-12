@@ -309,7 +309,7 @@ function createMessageHandler({ bot, chat, osuMaps, osuVerification, store }) {
         return;
       }
       if (!store?.isConfigured) {
-        await message.reply('Community alerts need Supabase configuration.');
+        await message.reply('Community alerts need a configured database.');
         return;
       }
       const selectedChannel = message.mentions.channels.first();
