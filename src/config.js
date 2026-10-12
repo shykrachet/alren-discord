@@ -1,3 +1,5 @@
+const path = require('node:path');
+
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const isOpenRouter = OPENAI_API_KEY?.startsWith('sk-or-');
 
@@ -12,7 +14,5 @@ module.exports = {
   OSU_REDIRECT_URI: process.env.OSU_REDIRECT_URI,
   // Railway supplies PORT at runtime; VERIFY_PORT remains useful for local development.
   VERIFY_PORT: Number(process.env.PORT || process.env.VERIFY_PORT || 3000),
-  SUPABASE_URL: process.env.SUPABASE_URL,
-  // SUPABASE_SECRET_KEY is the current Supabase server-only key name.
-  SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY,
+  SQLITE_PATH: process.env.SQLITE_PATH || path.join(__dirname, '../data/alren.sqlite'),
 };

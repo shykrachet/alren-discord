@@ -148,7 +148,7 @@ test('osumap-settings reports the real configuration error', async () => {
   const handler = createInteractionHandler({
     osuMaps: {
       async configureFeed() {
-        throw new Error('Supabase is missing osu_map_settings.');
+        throw new Error('Database is missing osu_map_settings.');
       },
     },
   });
@@ -156,7 +156,7 @@ test('osumap-settings reports the real configuration error', async () => {
   await handler(interaction);
 
   assert.match(reply, /I could not save the beatmap feed settings/);
-  assert.match(reply, /Reason: Supabase is missing osu_map_settings/);
+  assert.match(reply, /Reason: Database is missing osu_map_settings/);
 });
 
 test('setup verify configures a selected verification role', async () => {

@@ -283,7 +283,7 @@ function createOsuMapService({
 
   async function configureFeed({ channelId, guildId, mode, status }) {
     if (!store?.isConfigured) {
-      throw new Error('Supabase is not configured: add SUPABASE_URL and SUPABASE_SECRET_KEY.');
+      throw new Error('Database is not configured.');
     }
     const previous = await store.getMapSettings(guildId);
     const settings = normalizeSettings({
@@ -343,7 +343,7 @@ function createOsuMapService({
   function startFeed(postMap) {
     if (typeof postMap !== 'function') throw new Error('A beatmap feed callback is required.');
     if (!store?.isConfigured) {
-      console.warn('Beatmap feed is disabled: Supabase is not configured.');
+      console.warn('Beatmap feed is disabled: database is not configured.');
       return () => {};
     }
     if (feedTimer) clearInterval(feedTimer);

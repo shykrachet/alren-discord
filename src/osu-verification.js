@@ -169,7 +169,7 @@ function getConfigError(store) {
   if (!OSU_CLIENT_ID || !OSU_CLIENT_SECRET || !OSU_REDIRECT_URI) {
     return 'osu! OAuth is not configured: add OSU_CLIENT_ID, OSU_CLIENT_SECRET, and OSU_REDIRECT_URI.';
   }
-  if (!store?.isConfigured) return 'Supabase is not configured: add SUPABASE_URL and SUPABASE_SECRET_KEY.';
+  if (!store?.isConfigured) return 'Database is not configured.';
   return null;
 }
 
@@ -325,7 +325,7 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
     try {
       pending = state && await store.consumeVerificationRequest(state);
     } catch (error) {
-      console.error('Could not read verification request from Supabase:', error);
+      console.error('Could not read verification request from database:', error);
       response.writeHead(500, { 'content-type': 'text/html; charset=utf-8' });
       response.end(htmlPage('Verification failed', 'Could not read the verification request. Please try again.'));
       return;
@@ -563,7 +563,7 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
   async function configureVerificationSettings(guild, { channel, role }) {
     const current = store.getVerificationSettings
       ? await store.getVerificationSettings(guild.id).catch((error) => {
-        throw new Error(`Could not read verification settings. Apply the latest Supabase schema. ${error.message}`);
+        throw new Error(`Could not read verification settings: ${error.message}`);
       }) || {}
       : { role_id: await store.getVerificationRole(guild.id) };
     let roleId = current.role_id;
@@ -621,7 +621,7 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
         ? await store.getVerificationSettings(message.guildId)
         : { role_id: await store.getVerificationRole(message.guildId) };
     } catch (error) {
-      await message.reply(`Could not read verification settings. Apply the latest Supabase schema.\nReason: ${error.message}`);
+      await message.reply(`Could not read verification settings.\nReason: ${error.message}`);
       return;
     }
     await message.reply({

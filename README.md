@@ -1,441 +1,159 @@
 # Alren
 
-Alren is a Discord bot for private AI chat, osu! account verification, random beatmap discovery, automatic beatmap updates, and BN/Mappers' Guild community alerts.
+Alren is a Discord bot featuring osu! account verification, private AI chat, beatmap discovery and realtime updates, and BN / Mappers' Guild community alerts.
 
-## Community-alert quick start
+---
 
-Use this after the bot has its `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and Discord token configured:
+## Features
 
-1. In Supabase **SQL Editor**, run [`supabase/community_alert_settings.sql`](supabase/community_alert_settings.sql).
-2. Restart Alren with `npm start` (or redeploy it on Railway). The bot registers `/setup` when it connects.
-3. In Discord, a member with **Manage Server** runs:
+- **osu! Verification**: One-click OAuth verification, automatic server role assignment, profile synchronization, and welcome messages.
+- **Beatmap Feed & Discovery**: `/map` command with status/mode filters and automated realtime channel feeds for Ranked, Qualified, and Loved beatmaps.
+- **Community Alerts**: Realtime notifications for Beatmap Nominator (BN) request status openings/closures and Mappers' Guild mission openings.
+- **Private AI Chat**: Ephemeral and DM-based AI chat powered by OpenAI or OpenRouter models.
+- **Built-in SQLite Storage**: Zero-configuration, file-based database powered by `better-sqlite3` with automated schema migrations.
 
-   ```text
-   /setup alerts channel:#alerts bn_mode:Standard (osu!)
-   ```
+---
 
-4. Confirm the saved configuration privately with `/setup status`.
+## Requirements
 
-Alren records the current public state at startup and only posts later BN openings or newly opened Mappers' Guild missions. There is no `COMMUNITY_ALERT_CHANNEL_ID` environment variable: the channel and BN mode are stored per Discord server.
-
-## Installation
-
-### 1. Requirements
-
-- [Node.js](https://nodejs.org/) 20 or later
+- [Node.js](https://nodejs.org/) 20.0.0 or higher
 - Git
-- A Discord account
-- An API key from OpenAI or OpenRouter for AI chat
-- An osu! OAuth application for account verification and beatmap searches
-- A Supabase project for verification records and beatmap feed settings
+- A Discord Bot Token ([Discord Developer Portal](https://discord.com/developers/applications))
+- *(Optional)* [osu! OAuth Application](https://osu.ppy.sh/home/account/edit#new-oauth-application) credentials for account verification and beatmap search
+- *(Optional)* OpenAI or OpenRouter API key for AI chat
 
-Check Node.js:
+---
 
-```bash
-node --version
-```
+## Quick Start
 
-### 2. Download and install
+### 1. Clone & Install
 
 ```bash
-git clone https://github.com/shykrachet/alren-discord.git
+git clone https://github.com/Punuy/alren-discord.git
 cd alren-discord
 npm ci
 npm run setup
 ```
 
-`npm run setup` creates `.env` from `.env.example` when it does not exist.
+`npm run setup` copies `.env.example` to `.env` if `.env` does not already exist.
 
-After configuring `.env`, verify the installation and start the bot:
+### 2. Configure Environment
+
+Edit `.env` with your credentials:
+
+```env
+# Discord Bot
+DISCORD_TOKEN=your-discord-bot-token
+
+# AI Chat (Optional)
+OPENAI_API_KEY=your-api-key
+OPENAI_MODEL=gpt-5.4-mini
+AI_BASE_URL=
+
+# osu! Integration (Optional)
+OSU_CLIENT_ID=your-client-id
+OSU_CLIENT_SECRET=your-client-secret
+OSU_REDIRECT_URI=https://your-domain.example/osu/callback
+VERIFY_PORT=3000
+
+# Database (Optional - defaults to ./data/alren.sqlite)
+SQLITE_PATH=./data/alren.sqlite
+```
+
+### 3. Verify & Run
 
 ```bash
+# Run tests
 npm test
+
+# Start the bot
 npm start
 ```
 
-### 3. Configure Discord Developer Portal
+---
 
-Open the [Discord Developer Portal](https://discord.com/developers/applications), create an application, and open its **Bot** page.
+## Configuration Reference
 
-1. Copy the bot token to `DISCORD_TOKEN`. Keep it private.
-2. Enable **Message Content Intent** and **Server Members Intent** under **Privileged Gateway Intents**.
-3. Enable **Public Bot** if server owners other than the application owner should be able to install it.
-4. Open **OAuth2 → URL Generator**.
-5. Select the `bot` and `applications.commands` scopes.
-6. Select these bot permissions:
-   - View Channels
-   - Send Messages
-   - Read Message History
-   - Manage Roles
-   - Manage Nicknames
-   - Manage Messages
-7. Open the generated URL and add the bot to your server.
+| Variable | Description | Default |
+| --- | --- | --- |
+| `DISCORD_TOKEN` | Discord bot application token. | *(Required)* |
+| `OPENAI_API_KEY` | API key from OpenAI (`sk-...`) or OpenRouter (`sk-or-...`). | `undefined` |
+| `OPENAI_MODEL` | AI model identifier. | `gpt-5.4-mini` |
+| `AI_BASE_URL` | Base API URL for custom OpenAI-compatible providers. | `https://openrouter.ai/api/v1` (if OpenRouter key) |
+| `OSU_CLIENT_ID` | OAuth Client ID from osu! account settings. | `undefined` |
+| `OSU_CLIENT_SECRET` | OAuth Client Secret from osu! account settings. | `undefined` |
+| `OSU_REDIRECT_URI` | Public OAuth callback endpoint URL. | `http://localhost:3000/osu/callback` |
+| `VERIFY_PORT` | Local port for the HTTP OAuth and healthcheck server. | `3000` (or `PORT` provided by cloud host) |
+| `SQLITE_PATH` | File path for SQLite database. | `./data/alren.sqlite` |
+| `OSU_MAP_FEED_INTERVAL_MINUTES` | Polling interval for beatmap feed (minutes). | `15` |
+| `COMMUNITY_ALERT_INTERVAL_MINUTES` | Polling interval for community alerts (minutes). | `5` |
 
-Slash commands are registered globally when Alren starts. The same commands therefore become available in every server that installs the bot, including servers added later without restarting Alren. Discord may take a few minutes to show newly registered global commands.
+---
 
-When Alren joins a new server while it is already running, it also registers guild slash commands for that server immediately so `/help`, `/verify`, `/map`, and setup commands become available faster.
+## Commands
 
-### 4. Configure AI chat
+### Slash Commands
 
-Add one of the following to `.env` locally or Railway Variables.
+| Command | Description |
+| --- | --- |
+| `/help [language]` | Display interactive command guide and documentation. |
+| `/ping` | Check bot latency and online status. |
+| `/verify [osu_id]` | Initiate osu! OAuth account verification. |
+| `/verify-status` | View linked osu! account details for the current server. |
+| `/map [status] [mode]` | Post a random beatmap matching given filters. |
+| `/setup status` | Overview of server settings (verification, feed, alerts). |
+| `/setup verify <role> [channel]` | Configure verified role and public announcement channel. |
+| `/setup beatmap [channel] [status] [mode]` | Set up automatic beatmap feed channel and filters. |
+| `/setup alerts <channel> [bn_mode]` | Set up BN and Mappers' Guild alerts channel. |
+| `/alren <message>` | Start a private conversational session with Alren. |
+| `/alrenclear` | Clear conversation memory in the current channel. |
 
-```env
-DISCORD_TOKEN=your-discord-bot-token
-OPENAI_API_KEY=your-openai-or-openrouter-key
-OPENAI_MODEL=gpt-5.4-mini
-```
+### Legacy Prefix Commands
 
-For OpenRouter, use an `sk-or-...` key and set `OPENAI_MODEL` to an available OpenRouter model, for example `openai/gpt-5-mini`.
+Prefix commands using `!` (such as `!help`, `!alren <message>`, `!map`, and `!osuverify`) remain supported as fallbacks.
 
-### 5. Configure the osu! integration
+---
 
-1. Create an OAuth application in [osu! account settings](https://osu.ppy.sh/home/account/edit#new-oauth-application).
-2. Set its callback URL to `https://your-domain.example/osu/callback`.
-3. Add the credentials:
+## Server Permissions
 
-```env
-OSU_CLIENT_ID=12345
-OSU_CLIENT_SECRET=your-osu-client-secret
-OSU_REDIRECT_URI=https://your-domain.example/osu/callback
-VERIFY_PORT=3000
-```
+When adding the bot to your Discord server via OAuth2 URL generator, ensure the following scopes and permissions are granted:
 
-`OSU_CLIENT_ID` and `OSU_CLIENT_SECRET` are used for both account verification and beatmap searches. `OSU_REDIRECT_URI` is used by the account-verification callback and must exactly match the URL registered with osu!.
+- **Scopes**: `bot`, `applications.commands`
+- **Permissions**:
+  - View Channels
+  - Send Messages
+  - Read Message History
+  - Manage Roles *(Required for osu! verification role assignment)*
+  - Manage Nicknames *(Required for username synchronization)*
+  - Manage Messages
 
-### 6. Configure Supabase
+> **Role Hierarchy Note**: The bot's role in **Server Settings → Roles** must be placed above the role assigned to verified members. Discord prevents bots from assigning or managing roles equal to or above their own.
 
-1. In Supabase, open **SQL Editor** and apply your project schema. The bot expects the `osu_verifications`, `osu_verification_settings`, `osu_verification_requests`, `osu_map_settings`, `osu_map_posts`, and `community_alert_settings` tables. For verification result channels, also run [`supabase/verification_settings.sql`](supabase/verification_settings.sql).
-2. Copy the project URL and a server-only secret key from **Project Settings → API Keys**.
-3. Add them to `.env` or Railway Variables:
+---
 
-```env
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SECRET_KEY=your-server-only-supabase-secret
-```
+## Community Alerts API
 
-### 7. Deploy on Railway
-
-1. Create a Railway service from this GitHub repository.
-2. Railway runs `npm start` automatically.
-3. In **Settings → Networking → Public Networking**, generate a domain.
-4. Set `OSU_REDIRECT_URI` to `https://your-service.up.railway.app/osu/callback`.
-5. Enter all variables above in the Railway **Variables** tab. Do not add `PORT`; Railway provides it.
-6. Optionally use `/health` as the Railway health-check path.
-
-After changing Railway Variables, redeploy the service.
-
-## Private chat
-
-Use `/alren` or `!alren <message>` to chat with Alren. Mentioning the bot with a message also starts a chat.
-
-- Slash replies are ephemeral. Prefix and mention replies are sent by DM so the conversation stays private.
-- Slash replies delete automatically after five minutes.
-- Use `/alrenclear`, `!alrenclear`, or `!reset` to clear your private chat memory in the current channel.
-- Use `/help` or `!alrenhelp` to open the private Discord help card. It includes a button to the full web command guide: [alrenbot.xyz/commands](https://www.alrenbot.xyz/commands).
-
-## osu! verification
-
-### For server administrators
-
-Use `/setup` as the main admin panel:
-
-```text
-/setup verify role:@Verified channel:#verify-log
-```
-
-The verified role is given after successful OAuth. The verification channel receives a public profile summary after each successful verification. The Alren role must be above the selected role in **Server Settings → Roles**.
-
-### For members
-
-1. Run either command in the Discord server:
-
-```text
-/verify
-!osuverify
-```
-
-2. Alren sends a styled personal verification message with an OAuth button by DM.
-3. Open the link and sign in to osu!. Alren detects the account ID and username automatically.
-4. Alren gives the configured role, updates your Discord nickname to your osu! username when Discord allows it, and sends a profile summary by DM. The completion card includes your osu! name, avatar/cover artwork, preferred rank mode, global rank, country rank, country, and a direct profile link.
-
-When a new member joins a server that has a verification role configured, Alren automatically sends the same private OAuth onboarding message. Verification links last for 10 minutes and are tied to the Discord member who requested or received them. An optional osu! ID may still be supplied to `/verify` or `!osuverify` when the account should be preselected and checked before OAuth.
-
-> Discord only lets bots manage roles and nicknames below the bot's highest role. If Alren cannot rename someone, verification still succeeds and only the nickname update is skipped. If Alren cannot assign the configured role, move Alren's bot role above the verification role in **Server Settings → Roles**.
-
-## osu! beatmap feed
-
-`/map` posts a random beatmap publicly in the current channel. Each post shows the song title, artist, mapper, Ranked/Qualified/Loved status, available game modes, nominators, cover image, and an osu! link.
-
-Without saved server settings, `/map` defaults to `ranked` and `any`. Anyone can temporarily override either filter:
-
-```text
-/map status:qualified mode:mania
-```
-
-Available status filters are `ranked`, `qualified`, `loved`, and `all`. Available mode filters are `any`, `osu!`, `osu!taiko`, `osu!catch`, and `osu!mania`. For a manual request using `status:all`, Alren randomly chooses one of the three supported statuses.
-
-### Configure automatic updates
-
-Server administrators run `/setup beatmap` to choose the automatic beatmap channel, status filter, and mode filter. The command saves the default filter and enables the feed privately:
-
-```text
-/setup beatmap status:all mode:any channel:#beatmaps
-```
-
-The first configuration defaults to `ranked` and `any` when filters are omitted. If `channel` is omitted, Alren uses the channel where the command was run. On later runs, omitted filters keep their previously saved values.
-
-Alren checks osu! immediately when the bot starts and then every 30 seconds by default. For `status:all mode:any`, it watches Ranked, Qualified, and Loved separately, then posts every newly discovered map before the previous watermark instead of only one latest map. Every automatic post is recorded to prevent duplicates. The first configuration records the current latest map per watched status without posting it, so enabling the feed does not publish old maps.
-
-Set `OSU_MAP_FEED_INTERVAL_SECONDS` in `.env` or Railway Variables to change the realtime interval. Values are limited to 30–3600 seconds:
-
-```env
-OSU_MAP_FEED_INTERVAL_SECONDS=30
-```
-
-`OSU_MAP_FEED_INTERVAL_MINUTES` is still accepted for older deployments, but seconds are preferred.
-
-After updating the bot, reapply your project schema in Supabase SQL Editor so the `osu_map_settings`, `osu_map_posts`, `community_alert_settings`, and the `osu_verification_settings.channel_id` column are available.
-
-## BN and Mappers' Guild alerts
-
-Alren can monitor two public community data sources:
-
-- BN request status from `bn.mappersguild.com`. A green notification is sent when a BN opens requests, and a red notification is sent when that BN later closes them.
-- Mappers' Guild activity logs. A notification is sent when a new mission is opened.
-
-Run [`supabase/community_alert_settings.sql`](supabase/community_alert_settings.sql) in Supabase SQL Editor once. Then, in Discord, an administrator with **Manage Server** can configure the alert destination and BN mode:
-
-```text
-/setup alerts channel:#alerts bn_mode:Standard (osu!)
-```
-
-Choose `Standard (osu!)`, `Taiko`, `Catch`, or `Mania` from the `bn_mode` menu. `All osu! modes` is also available when you want every BN opening. The command works directly in Discord chat; no server environment variable or terminal command is needed to change the channel or mode. The BN mode filter applies only to BN request-opening messages; new Mappers' Guild missions are always sent to the selected channel. Run `/setup status` to view the saved setting, or provide one option to change just that value.
-
-Set the optional polling interval in `.env` or Railway Variables:
-
-```env
-COMMUNITY_ALERT_INTERVAL_MINUTES=5
-```
-
-The interval accepts values from 1–60 minutes. When the bot starts, it records the current state as a baseline without sending old notifications. Later checks notify only new Open transitions and new mission-opening events.
-
-The bot role needs **View Channel** and **Send Messages** permissions in the configured channel.
-
-### Community alerts API
-
-The same normalized public data is available from the bot's HTTP server:
+The bot exposes a public health and community alerts endpoint on its HTTP server:
 
 ```http
 GET /api/community-alerts
 ```
 
-For a Railway deployment, the full URL is:
+Returns cached JSON data with active BN request states and recent Mappers' Guild missions.
 
-```text
-https://your-service.up.railway.app/api/community-alerts
-```
+---
 
-The JSON response contains `checkedAt`, normalized `bnRequests.entries`, and recent `missions.recentOpenings`. Responses are cached for 60 seconds to avoid excessive requests to the upstream sites. The API contains only public data and does not require an osu! or Mappers' Guild login.
-
-Example response shape:
-
-```json
-{
-  "checkedAt": "2026-09-17T00:00:00.000Z",
-  "bnRequests": { "entries": [] },
-  "missions": { "recentOpenings": [] }
-}
-```
-
-## Commands
-
-The web command guide is available at [https://www.alrenbot.xyz/commands](https://www.alrenbot.xyz/commands). The Discord `/help` and `!alrenhelp` cards link to this page.
-
-### Registered slash commands
-
-These are the slash commands Alren registers in Discord:
-
-| Command | Description |
-| --- | --- |
-| `/alren message` | Start a private chat with Alren. |
-| `/alrenclear` | Clear your private Alren chat memory in the current channel. |
-| `/help [language]` | Open a private dropdown to choose the Thai or English guide. |
-| `/ping` | Check whether Alren is online. |
-| `/verify [osu_id]` | Start one-click osu! OAuth verification. The ID is optional. |
-| `/verify-status` | Show your linked osu! account in this server. |
-| `/map [status] [mode]` | Post a random beatmap with cover artwork. |
-| `/setup status` | View Verify, Beatmap feed, and BN alert settings in one private admin panel. |
-| `/setup verify role channel` | Configure the verified role and public verification result channel. |
-| `/setup beatmap channel status mode` | Configure the automatic beatmap feed. |
-| `/setup alerts channel bn_mode` | Configure BN/Mappers' Guild notifications. |
-
-The older long-form setup slash commands are handled as legacy fallbacks if Discord still has a stale copy cached, but `/setup` is the main admin path.
-
-| Command | Description |
-| --- | --- |
-| `!alren message` | Start a private chat with Alren by prefix. Replies are sent by DM. |
-| `!alrenclear` or `!reset` | Clear your private Alren chat memory in the current channel. |
-| `!alrenhelp` | Open a dropdown to choose the styled Thai or English command guide. |
-| `!ping` | Check whether Alren is online. |
-| `!verify-setting @role` | Legacy prefix setup for the verification role. `/setup verify` is preferred. |
-| `!verify-status` | Show the linked osu! account in this server. |
-| `!osuverify [osu_user_id]` | Legacy prefix verification command. `/verify` is preferred. |
-| `!osumap [status] [mode]` | Legacy prefix random beatmap. `/map` is preferred. |
-| `!osumap-settings [status] [mode]` | Legacy prefix beatmap feed setup. `/setup beatmap` is preferred. |
-| `!osumap-status` | Legacy prefix beatmap feed status. `/setup status` is preferred. |
-| `!community-alert-settings #channel [mode]` | Legacy prefix BN/Mappers' Guild setup. `/setup alerts` is preferred. |
-
-## Recent updates
-
-- `/help` and prefix help now link to the web command guide at [alrenbot.xyz/commands](https://www.alrenbot.xyz/commands).
-- `/setup verify` configures both the verified role and public verification result channel.
-- `/verify-status` shows the current user's verification, while `/setup status` shows server settings.
-- `/setup` is now organized into clear subcommands: `status`, `verify`, `beatmap`, and `alerts`.
-- Duplicate slash setup commands such as `/verify-setting`, `/osumap-settings`, `/osumap-status`, and `/community-alert-settings` are no longer registered; use `/setup` instead.
-- Beatmap feed now runs in near realtime by default and handles `status:all mode:any` by checking every watched status independently.
-- `/setup beatmap` supports `channel`, `status`, and `mode`.
-- osu! map mode labels use the custom mode icons from `img/modes` when Discord application emojis are available.
-- Alren reports the actual command failure reason back to the user, including Supabase, osu!, permission, or role-order errors.
-- Verification can still succeed when Discord blocks nickname changes; Alren skips only the nickname update when role order or permissions prevent it.
-- Verification completion DMs now show the verified osu! player's avatar, country, preferred rank mode, global rank, country rank, and profile link.
-- When invited to a new server, Alren registers guild slash commands immediately in addition to global startup registration.
-
-## Troubleshooting
-
-For Thai instructions covering Discord Bot Token reset, local `.env` setup, Railway updates, and `TokenInvalid`, see [`docs/DISCORD_TOKEN_SETUP_TH.md`](docs/DISCORD_TOKEN_SETUP_TH.md).
-
-### `Cannot find module './src/osu-maps'`
-
-This means the checkout predates the restored beatmap module. Update the repository and reinstall the locked dependencies:
+## Development
 
 ```bash
-git pull
-npm ci
+# Run full test suite
 npm test
-```
 
-Confirm that `src/osu-maps.js` exists before running `npm start` again.
-
-### Beatmap requests fail
-
-- Confirm that `OSU_CLIENT_ID` and `OSU_CLIENT_SECRET` match the same osu! OAuth application.
-- Confirm that the bot host can reach `https://osu.ppy.sh`.
-- Check the bot logs for an osu! authentication or beatmap-search status code.
-
-### Slash commands are missing after inviting the bot
-
-- Use an invite URL with both `bot` and `applications.commands` scopes.
-- Confirm the bot has View Channels and Send Messages in the channel where you are testing.
-- Alren registers global commands at startup and registers guild commands immediately when it joins a new server. If Discord still does not show commands, restart Alren once and check the logs for command-registration errors.
-
-### Automatic feed is disabled or settings cannot be saved
-
-- Confirm that `SUPABASE_URL` and `SUPABASE_SECRET_KEY` are set.
-- Run the latest Supabase schema after pulling an update.
-- For `/setup verify channel:...`, run [`supabase/verification_settings.sql`](supabase/verification_settings.sql) once to add `channel_id` to `osu_verification_settings`.
-- Keep the Supabase secret key on the server; never expose it in Discord or client-side code.
-
-### Community alerts are not posting
-
-- Run [`supabase/community_alert_settings.sql`](supabase/community_alert_settings.sql) in Supabase SQL Editor.
-- Confirm the server configuration privately with `/setup status`.
-- Give Alren **View Channel** and **Send Messages** in the selected channel.
-- Wait for a future BN opening or mission-opening event; existing public entries are intentionally not posted after a restart.
-
-## คู่มือทดสอบและดู Template
-
-คำสั่งในส่วนนี้ต้องรันจากโฟลเดอร์หลักของโปรเจกต์ หลังจากติดตั้ง dependencies ด้วย `npm ci` แล้ว ระบบทดสอบและ preview ใช้ข้อมูลจำลอง จึงไม่เชื่อมต่อ Discord, osu! API, BN, Mappers' Guild หรือ Supabase และไม่ส่งข้อความจริง
-
-### ทดสอบระบบทั้งหมด
-
-ใช้คำสั่งนี้ก่อน deploy ทุกครั้ง:
-
-```bash
-npm test
-```
-
-เมื่อทำงานสำเร็จ บรรทัดสรุปด้านล่างต้องแสดง `fail 0` หากมี test ไม่ผ่าน ให้ดูชื่อ test และ error ที่แสดงอยู่ก่อนบรรทัดสรุป
-
-### ทดสอบและดู Template ของ osu! beatmap
-
-รันเฉพาะ test ของ `/map` และ automatic beatmap feed:
-
-```bash
+# Run specific tests
 npm run test:osumap
-```
-
-Test ชุดนี้ตรวจสอบว่า:
-
-- ระบบค้นหาแผนที่แล้วดึงรายละเอียด beatmapset เพิ่มจาก osu! API
-- การ์ดแสดง Status, Modes, Difficulties, Nominators, Source, Genre และ Language
-- ไม่มีช่อง `Mapper Tags`
-- ชื่อ Nominator เชื่อมไปยังโปรไฟล์ osu!
-- Genre และ Language เชื่อมไปยังหน้าค้นหา osu! ด้วยตัวกรองที่ถูกต้อง
-
-ดู Discord embed payload ตัวอย่างโดยไม่เรียก API:
-
-```bash
-npm run preview:osumap
-```
-
-ผลลัพธ์เป็น JSON หนึ่งชุดซึ่งมี `title`, `description`, `fields`, `image` และ `thumbnail` เหมือน payload ที่บอทส่งให้ Discord ข้อมูลตัวอย่างแก้ไขได้ที่ [`scripts/preview-osumap.js`](scripts/preview-osumap.js) ส่วน test อยู่ที่ [`test/osu-maps.test.js`](test/osu-maps.test.js)
-
-### ทดสอบและดู Template ของ BN และ Mappers' Guild
-
-รันเฉพาะ test ของ community alerts:
-
-```bash
 npm run test:community
-```
 
-Test ชุดนี้ตรวจสอบว่า:
-
-- สถานะ BN ถูกแปลงเป็น Open, Closed หรือ Unknown อย่างถูกต้อง
-- การ์ด BN Open และ BN Closed แสดงข้อมูล รูป และลิงก์ที่เกี่ยวข้อง
-- ตัวกรอง game mode ส่งแจ้งเตือนให้เซิร์ฟเวอร์ที่ตั้งค่าไว้เท่านั้น
-- การเริ่มระบบครั้งแรกสร้าง baseline โดยไม่ส่งรายการเก่า
-- ระบบแจ้งเฉพาะการเปลี่ยนสถานะ BN และ mission ที่เพิ่งเปิดใหม่
-- การ์ด Mappers' Guild เชื่อมไปยังหน้า Missions
-
-ดู template ทั้งสามแบบโดยไม่เรียก API:
-
-```bash
+# Preview payload structures
+npm run preview:osumap
 npm run preview:community
 ```
-
-JSON ที่แสดงแบ่งเป็นสามส่วน:
-
-| Key | Template |
-| --- | --- |
-| `bnOpen` | BN เปิดรับ beatmap requests |
-| `bnClosed` | BN ปิดรับ beatmap requests |
-| `mapperGuildMission` | Mappers' Guild mission เปิดใหม่ |
-
-ข้อมูลตัวอย่างแก้ไขได้ที่ [`scripts/preview-community.js`](scripts/preview-community.js) ส่วน test อยู่ที่ [`test/community-alerts.test.js`](test/community-alerts.test.js)
-
-### วิธีแก้ Template
-
-1. เปิดไฟล์ preview ของระบบที่ต้องการ
-2. แก้เฉพาะข้อมูลจำลอง เช่น ชื่อ, mode, genre, language หรือ preferences โดยไม่ใส่ token และ secret จริง
-3. รันคำสั่ง `preview:*` เพื่อดู payload ใหม่
-4. รันคำสั่ง `test:*` ของระบบนั้น
-5. รัน `npm test` อีกครั้งก่อน commit หรือ deploy
-
-ไฟล์ preview ใช้สำหรับข้อมูลตัวอย่างเท่านั้น การเปลี่ยนรูปแบบการ์ดจริงต้องแก้ที่ [`src/osu-maps.js`](src/osu-maps.js) หรือ [`src/community-alerts.js`](src/community-alerts.js) แล้วปรับ test ให้ตรงกับพฤติกรรมที่ต้องการ
-
-### Windows PowerShell รัน `npm` ไม่ได้
-
-ถ้า PowerShell แสดงข้อความว่า `npm.ps1 cannot be loaded because running scripts is disabled` ให้ใช้ `npm.cmd` แทน เช่น:
-
-```powershell
-npm.cmd test
-npm.cmd run preview:osumap
-npm.cmd run preview:community
-```
-
-### Checklist ก่อน deploy
-
-- `npm test` แสดง `fail 0`
-- `npm run preview:osumap` แสดงข้อมูลและลิงก์ครบ
-- `npm run preview:community` แสดง `bnOpen`, `bnClosed` และ `mapperGuildMission`
-- ไม่มี token, secret หรือข้อมูลส่วนตัวจริงอยู่ในไฟล์ template
