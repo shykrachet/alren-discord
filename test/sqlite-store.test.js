@@ -1,5 +1,9 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const Database = require('better-sqlite3');
 const { createSqliteStore } = require('../src/sqlite-store');
 
 test('sqlite-store: verification lifecycle and duplicate checks', async () => {
@@ -80,6 +84,79 @@ test('sqlite-store: map settings and posting state', async () => {
   assert.equal(await store.hasPostedMap('guild-2', 456, 'ranked'), false);
 
   store.close();
+});
+
+test('sqlite-store: feeds and posting history are isolated by channel and server', async (t) => {
+  const store = createSqliteStore({ dbPath: ':memory:' });
+  t.after(() => store.close());
+  for (const [channelId, mode] of [['mania', 'mania'], ['standard', 'osu'], ['taiko', 'taiko'], ['catch', 'catch']]) {
+    await store.saveMapSettings('guild', { channelId, mode, status: 'ranked' });
+  }
+  await store.saveMapSettings('other-guild', { channelId: 'other', mode: 'any', status: 'all' });
+  assert.equal((await store.listMapSettings('guild')).length, 4);
+  assert.equal((await store.listMapSettings()).length, 5);
+  assert.equal((await store.getMapSettings('guild', 'mania')).mode_filter, 'mania');
+  assert.equal(await store.getMapSettings('guild', 'unconfigured'), null);
+
+  await store.markMapPosted('guild', 456, 'ranked', 'standard');
+  assert.equal(await store.hasPostedMap('guild', 456, 'ranked', 'standard'), true);
+  assert.equal(await store.hasPostedMap('guild', 456, 'ranked', 'mania'), false);
+  assert.equal(await store.hasPostedMap('other-guild', 456, 'ranked', 'standard'), false);
+  await store.markMapPosted('guild', 456, 'ranked', 'mania');
+
+  await store.saveMapSettings('guild', { channelId: 'mania', mode: 'mania', status: 'ranked' });
+  assert.equal(await store.hasPostedMap('guild', 456, 'ranked', 'mania'), true);
+  await store.saveMapSettings('guild', { channelId: 'mania', mode: 'mania', status: 'loved' });
+  assert.equal(await store.hasPostedMap('guild', 456, 'ranked', 'mania'), false);
+  assert.equal(await store.hasPostedMap('guild', 456, 'ranked', 'standard'), true);
+
+  assert.equal(await store.deleteMapSettings('guild', 'standard'), true);
+  assert.equal(await store.getMapSettings('guild', 'standard'), null);
+  assert.equal(await store.hasPostedMap('guild', 456, 'ranked', 'standard'), false);
+  assert.equal((await store.listMapSettings('guild')).length, 3);
+  assert.equal((await store.listMapSettings('other-guild')).length, 1);
+});
+
+test('sqlite-store: migrates a legacy feed and posting watermark and can reopen safely', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alren-map-migration-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const dbPath = path.join(dir, 'legacy.sqlite');
+  const legacy = new Database(dbPath);
+  legacy.exec(`
+    CREATE TABLE osu_map_settings (
+      guild_id TEXT PRIMARY KEY, channel_id TEXT, mode_filter TEXT, status_filter TEXT, updated_at TEXT NOT NULL
+    );
+    CREATE TABLE osu_map_posts (
+      guild_id TEXT NOT NULL, beatmapset_id TEXT NOT NULL, status TEXT NOT NULL,
+      PRIMARY KEY (guild_id, beatmapset_id, status)
+    );
+    INSERT INTO osu_map_settings VALUES ('guild', 'mania', 'mania', 'ranked', '2026-10-14T00:00:00Z');
+    INSERT INTO osu_map_settings VALUES ('unset-guild', NULL, 'any', 'ranked', '2026-10-14T00:00:00Z');
+    INSERT INTO osu_map_posts VALUES ('guild', '123', 'ranked');
+    INSERT INTO osu_map_posts VALUES ('unset-guild', '456', 'ranked');
+  `);
+  legacy.close();
+
+  let store = createSqliteStore({ dbPath });
+  try {
+    assert.equal((await store.getMapSettings('guild', 'mania')).mode_filter, 'mania');
+    assert.equal(await store.hasPostedMap('guild', 123, 'ranked', 'mania'), true);
+    assert.equal(await store.hasPostedMap('guild', 123, 'ranked', 'standard'), false);
+    assert.deepEqual(await store.listMapSettings('unset-guild'), []);
+    await store.saveMapSettings('guild', { channelId: 'standard', mode: 'osu', status: 'loved' });
+    await store.markMapPosted('guild', 123, 'ranked', 'standard');
+  } finally {
+    store.close();
+  }
+  store = createSqliteStore({ dbPath });
+  try {
+    assert.equal((await store.listMapSettings('guild')).length, 2);
+    assert.equal((await store.getMapSettings('guild', 'standard')).status_filter, 'loved');
+    assert.equal(await store.hasPostedMap('guild', 123, 'ranked', 'mania'), true);
+    assert.equal(await store.hasPostedMap('guild', 123, 'ranked', 'standard'), true);
+  } finally {
+    store.close();
+  }
 });
 
 test('sqlite-store: community alert settings', async () => {

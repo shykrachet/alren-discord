@@ -85,8 +85,14 @@ npm start
 | `OSU_REDIRECT_URI` | Public OAuth callback endpoint URL. | `http://localhost:3000/osu/callback` |
 | `VERIFY_PORT` | Local port for the HTTP OAuth and healthcheck server. | `3000` (or `PORT` provided by cloud host) |
 | `SQLITE_PATH` | File path for SQLite database. | `./data/alren.sqlite` |
-| `OSU_MAP_FEED_INTERVAL_MINUTES` | Polling interval for beatmap feed (minutes). | `15` |
-| `COMMUNITY_ALERT_INTERVAL_MINUTES` | Polling interval for community alerts (minutes). | `5` |
+| `OSU_MAP_FEED_INTERVAL_SECONDS` | Polling interval for beatmap feed (30–3600 seconds). | `30` |
+| `COMMUNITY_ALERT_INTERVAL_SECONDS` | Polling interval for BN open/closed status and Mappers' Guild alerts (30–3600 seconds). | `30` |
+| `OSU_MAP_FEED_INTERVAL_MINUTES` | Legacy beatmap interval, used when the seconds variable is absent. | `0.5` |
+| `COMMUNITY_ALERT_INTERVAL_MINUTES` | Legacy community interval, used when the seconds variable is absent. | `0.5` |
+
+The bot checks feeds immediately at startup, then every 30 seconds by default. BN alerts are sent when a request status changes, and beatmap feeds post new maps to each configured channel. These updates use polling; delivery follows the next successful check and depends on when the upstream APIs expose the change. The first BN check establishes a baseline to avoid flooding channels with existing statuses.
+
+For existing deployments configured with the old minute intervals, set `OSU_MAP_FEED_INTERVAL_SECONDS=30` and `COMMUNITY_ALERT_INTERVAL_SECONDS=30`, then restart the bot. Seconds settings take precedence. The community snapshot API disables browser/proxy caching and keeps a 30-second in-memory cache for direct requests; monitor checks always request fresh data.
 
 ---
 
@@ -103,10 +109,34 @@ npm start
 | `/map [status] [mode]` | Post a random beatmap matching given filters. |
 | `/setup status` | Overview of server settings (verification, feed, alerts). |
 | `/setup verify <role> [channel]` | Configure verified role and public announcement channel. |
-| `/setup beatmap [channel] [status] [mode]` | Set up automatic beatmap feed channel and filters. |
+| `/setup beatmap [channel] [status] [mode] [enabled]` | Set up automatic beatmap filters per channel, or disable that channel’s feed. Defaults to the current channel. |
 | `/setup alerts <channel> [bn_mode]` | Set up BN and Mappers' Guild alerts channel. |
 | `/alren <message>` | Start a private conversational session with Alren. |
 | `/alrenclear` | Clear conversation memory in the current channel. |
+
+Configure multiple beatmap feeds in the same server by running the command once per channel:
+
+```text
+/setup beatmap channel:#mania mode:mania status:ranked
+/setup beatmap channel:#standard mode:osu status:ranked
+/setup beatmap channel:#taiko mode:taiko status:ranked
+/setup beatmap channel:#catch mode:catch status:ranked
+```
+
+`osu` is displayed as **Standard (osu!)** in the mode picker. Each channel keeps its own filters and posting history, so a set containing several modes can appear in each matching channel. Use `mode:any` (**All Mode**, without an icon) for all modes in one channel, and `status:all` for Ranked, Qualified, and Loved. Existing feed settings and history migrate automatically to their original channel.
+
+Mode icons in bot messages and embeds use the Discord application emojis uploaded from `img/modes` at startup. Slash-command choices display plain mode names because Discord does not support custom emoji in those choices.
+
+For both **Ranked + Loved** in the same channel, choose `status:ranked_loved`:
+
+```text
+/setup beatmap channel:#mania mode:mania status:ranked_loved
+/setup beatmap channel:#standard mode:osu status:ranked_loved
+```
+
+This watches Ranked and Loved separately and posts new maps from both statuses. You can also choose just `status:ranked` or `status:loved` per channel. `/map status:ranked_loved` randomly selects one of these two statuses, and `/map` inherits this option when saved for the current channel.
+
+`/map` uses the current channel’s saved filters unless you supply overrides. Unconfigured channels default to any mode and Ranked. `/setup status` lists the configured feeds. To stop only one feed, run `/setup beatmap channel:#mania enabled:false`.
 
 ### Legacy Prefix Commands
 

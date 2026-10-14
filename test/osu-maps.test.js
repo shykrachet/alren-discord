@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { createMapEmbed, createOsuMapService } = require('../src/osu-maps');
 const { syncApplicationModeEmojis } = require('../src/mode-icons');
+const { createSqliteStore } = require('../src/sqlite-store');
 
 function beatmapsetTemplate(id, status = 'ranked') {
   return {
@@ -183,7 +184,7 @@ test('configureFeed saves settings and primes the latest map', async () => {
     status: 'ranked',
   });
   assert.deepEqual(saved, [['guild', settings]]);
-  assert.deepEqual(posted, [['guild', 789, 'ranked']]);
+  assert.deepEqual(posted, [['guild', 789, 'ranked', 'channel']]);
 });
 
 test('configureFeed primes every status for realtime all-mode feeds', async () => {
@@ -212,9 +213,9 @@ test('configureFeed primes every status for realtime all-mode feeds', async () =
   });
 
   assert.deepEqual(posted, [
-    ['guild', 100, 'ranked'],
-    ['guild', 200, 'qualified'],
-    ['guild', 300, 'loved'],
+    ['guild', 100, 'ranked', 'channel'],
+    ['guild', 200, 'qualified', 'channel'],
+    ['guild', 300, 'loved', 'channel'],
   ]);
 });
 
@@ -259,7 +260,185 @@ test('startFeed posts all new all-mode maps before the previous watermark', asyn
 
   assert.deepEqual(delivered, [101, 201]);
   assert.deepEqual(marked, [
-    ['guild', 101, 'ranked'],
-    ['guild', 201, 'qualified'],
+    ['guild', 101, 'ranked', 'channel'],
+    ['guild', 201, 'qualified', 'channel'],
   ]);
+});
+
+test('feeds four modes to separate channels and delivers shared sets to both matching channels', async (t) => {
+  const store = createSqliteStore({ dbPath: ':memory:' });
+  t.after(() => store.close());
+  const allMaps = [];
+  const modeNames = ['osu', 'taiko', 'fruits', 'mania'];
+  const makeMap = (id, modes, date) => ({
+    ...beatmapsetTemplate(id),
+    beatmaps: modes.map((mode) => ({ mode, difficulty_rating: 3 })),
+    ranked_date: date,
+  });
+  for (let i = 0; i < modeNames.length; i += 1) {
+    allMaps.push(makeMap(100 + i, [modeNames[i]], '2026-10-13T00:00:00Z'));
+  }
+  const fetchImpl = async (url) => {
+    const requestUrl = new URL(url);
+    if (requestUrl.pathname.endsWith('/oauth/token')) {
+      return { ok: true, json: async () => ({ access_token: 'token', expires_in: 3600 }) };
+    }
+    if (requestUrl.pathname.endsWith('/search')) {
+      const mode = modeNames[Number(requestUrl.searchParams.get('m'))];
+      const beatmapsets = allMaps.filter((map) => map.status === requestUrl.searchParams.get('s')
+        && (!requestUrl.searchParams.has('m') || map.beatmaps.some((beatmap) => beatmap.mode === mode)));
+      return { ok: true, json: async () => ({ beatmapsets }) };
+    }
+    return { ok: true, json: async () => allMaps.find((map) => map.id === Number(requestUrl.pathname.split('/').at(-1))) };
+  };
+  const service = createOsuMapService({ store, clientId: '123', clientSecret: 'secret', fetchImpl, random: () => 0 });
+  for (const mode of ['osu', 'taiko', 'catch', 'mania']) {
+    await service.configureFeed({ guildId: 'guild', channelId: mode, mode });
+  }
+  assert.equal((await store.listMapSettings('guild')).length, 4);
+  for (let i = 0; i < modeNames.length; i += 1) {
+    allMaps.push(makeMap(200 + i, [modeNames[i]], '2026-10-14T00:00:00Z'));
+  }
+  allMaps.push(makeMap(300, ['osu', 'mania'], '2026-10-14T00:01:00Z'));
+
+  const delivered = [];
+  async function runFeed() {
+    const stop = service.startFeed(async ({ map, settings }) => delivered.push([settings.channelId, map.id]));
+    try {
+      await new Promise((resolve) => setImmediate(resolve));
+    } finally {
+      stop();
+    }
+  }
+  await runFeed();
+  assert.deepEqual(delivered, [
+    ['catch', 202], ['mania', 203], ['mania', 300], ['osu', 200], ['osu', 300], ['taiko', 201],
+  ]);
+  await runFeed();
+  assert.equal(delivered.length, 6, 'the next poll must not post duplicates');
+
+  assert.deepEqual((await service.getRandomMap({ guildId: 'guild', channelId: 'mania' })).filters, { mode: 'mania', status: 'ranked' });
+  assert.deepEqual((await service.getRandomMap({ guildId: 'guild', channelId: 'osu' })).filters, { mode: 'osu', status: 'ranked' });
+  assert.deepEqual((await service.getRandomMap({ guildId: 'guild', channelId: 'unconfigured' })).filters, { mode: 'any', status: 'ranked' });
+  assert.deepEqual((await service.getRandomMap({ guildId: 'guild', channelId: 'mania', mode: 'taiko' })).filters, { mode: 'taiko', status: 'ranked' });
+});
+
+test('failed feed setup preserves the previous filters and posting history', async (t) => {
+  const store = createSqliteStore({ dbPath: ':memory:' });
+  t.after(() => store.close());
+  await store.saveMapSettings('guild', { channelId: 'mania', mode: 'mania', status: 'ranked' });
+  await store.markMapPosted('guild', 123, 'ranked', 'mania');
+  const service = createOsuMapService({
+    store,
+    clientId: '123',
+    clientSecret: 'secret',
+    fetchImpl: async () => ({ ok: false, status: 503 }),
+  });
+  await assert.rejects(service.configureFeed({ guildId: 'guild', channelId: 'mania', mode: 'osu' }), /authentication failed/);
+  assert.equal((await store.getMapSettings('guild', 'mania')).mode_filter, 'mania');
+  assert.equal(await store.hasPostedMap('guild', 123, 'ranked', 'mania'), true);
+  assert.equal((await store.listMapSettings('guild')).length, 1);
+});
+
+test('Ranked + Loved primes and polls both statuses without requesting Qualified', async (t) => {
+  const store = createSqliteStore({ dbPath: ':memory:' });
+  t.after(() => store.close());
+  const requests = [];
+  const initialMaps = {
+    ranked: [beatmapsetTemplate(100, 'ranked')],
+    loved: [beatmapsetTemplate(300, 'loved')],
+    qualified: [beatmapsetTemplate(200, 'qualified')],
+  };
+  const createService = (maps) => createOsuMapService({
+    store, clientId: '123', clientSecret: 'secret', fetchImpl: feedApiFetch(maps, requests),
+  });
+  await createService(initialMaps).configureFeed({
+    guildId: 'guild', channelId: 'mania', mode: 'mania', status: 'ranked_loved',
+  });
+  assert.equal((await store.getMapSettings('guild', 'mania')).status_filter, 'ranked_loved');
+  assert.equal(await store.hasPostedMap('guild', 100, 'ranked', 'mania'), true);
+  assert.equal(await store.hasPostedMap('guild', 300, 'loved', 'mania'), true);
+  assert.equal(await store.hasPostedMap('guild', 200, 'qualified', 'mania'), false);
+
+  const service = createService({
+    ranked: [{ ...beatmapsetTemplate(101, 'ranked'), ranked_date: '2026-10-14T00:00:00Z' }, ...initialMaps.ranked],
+    loved: [{ ...beatmapsetTemplate(301, 'loved'), ranked_date: '2026-10-14T00:01:00Z' }, ...initialMaps.loved],
+    qualified: initialMaps.qualified,
+  });
+  const delivered = [];
+  for (let pass = 0; pass < 2; pass += 1) {
+    const stop = service.startFeed(async ({ map, settings }) => delivered.push([settings.channelId, map.id, map.status]));
+    try {
+      await new Promise((resolve) => setImmediate(resolve));
+    } finally {
+      stop();
+    }
+  }
+  assert.deepEqual(delivered, [['mania', 101, 'ranked'], ['mania', 301, 'loved']]);
+  const searches = requests.map(({ url }) => new URL(url)).filter((url) => url.pathname.endsWith('/search'));
+  assert.deepEqual(searches.map((url) => url.searchParams.get('s')), ['ranked', 'loved', 'ranked', 'loved', 'ranked', 'loved']);
+  assert.ok(searches.every((url) => url.searchParams.get('m') === '3'));
+});
+
+test('random maps inherit Ranked + Loved from the channel and choose only its allowed statuses', async (t) => {
+  const store = createSqliteStore({ dbPath: ':memory:' });
+  t.after(() => store.close());
+  await store.saveMapSettings('guild', { channelId: 'mania', mode: 'mania', status: 'ranked_loved' });
+  for (const [randomValue, expectedStatus, expectedId] of [[0, 'ranked', 100], [0.75, 'loved', 300]]) {
+    const requests = [];
+    const service = createOsuMapService({
+      store,
+      clientId: '123',
+      clientSecret: 'secret',
+      random: () => randomValue,
+      fetchImpl: feedApiFetch({ ranked: [beatmapsetTemplate(100)], loved: [beatmapsetTemplate(300, 'loved')] }, requests),
+    });
+    const result = await service.getRandomMap({ guildId: 'guild', channelId: 'mania' });
+    assert.deepEqual(result.filters, { mode: 'mania', status: expectedStatus });
+    assert.equal(result.map.id, expectedId);
+    assert.equal(new URL(requests[1].url).searchParams.get('s'), expectedStatus);
+    const overridden = await service.getRandomMap({ guildId: 'guild', channelId: 'mania', status: 'ranked' });
+    assert.equal(overridden.filters.status, 'ranked');
+    assert.equal(overridden.map.id, 100);
+  }
+});
+
+test('beatmap feed checks immediately and delivers new maps on the next 30-second tick', async (t) => {
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  const store = createSqliteStore({ dbPath: ':memory:' });
+  t.after(() => store.close());
+  await store.saveMapSettings('guild', { channelId: 'mania', mode: 'mania', status: 'ranked' });
+  await store.markMapPosted('guild', 100, 'ranked', 'mania');
+  const maps = [beatmapsetTemplate(100)];
+  const requests = [];
+  const delivered = [];
+  const service = createOsuMapService({
+    store,
+    clientId: '123',
+    clientSecret: 'secret',
+    intervalSeconds: null,
+    intervalMinutes: null,
+    fetchImpl: apiFetch(maps, requests),
+  });
+  const stop = service.startFeed(async ({ map }) => delivered.push(map.id));
+  t.after(stop);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(requests.some(({ url }) => url.includes('/search')));
+  assert.deepEqual(delivered, []);
+
+  maps.push({ ...beatmapsetTemplate(101), ranked_date: '2026-10-14T00:00:00Z' });
+  t.mock.timers.tick(29_999);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(delivered, []);
+  t.mock.timers.tick(1);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(delivered, [101]);
+  t.mock.timers.tick(30_000);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(delivered, [101]);
+  stop();
+  const requestCount = requests.length;
+  t.mock.timers.tick(30_000);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(requests.length, requestCount);
 });

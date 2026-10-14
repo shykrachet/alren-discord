@@ -32,18 +32,20 @@ CREATE TABLE IF NOT EXISTS osu_verification_requests (
 );
 
 CREATE TABLE IF NOT EXISTS osu_map_settings (
-  guild_id TEXT PRIMARY KEY,
-  channel_id TEXT,
+  guild_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
   mode_filter TEXT,
   status_filter TEXT,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (guild_id, channel_id)
 );
 
 CREATE TABLE IF NOT EXISTS osu_map_posts (
   guild_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
   beatmapset_id TEXT NOT NULL,
   status TEXT NOT NULL,
-  PRIMARY KEY (guild_id, beatmapset_id, status)
+  PRIMARY KEY (guild_id, channel_id, beatmapset_id, status)
 );
 
 CREATE TABLE IF NOT EXISTS community_alert_settings (
@@ -70,6 +72,29 @@ function createSqliteStore({ dbPath = path.join(__dirname, '../data/alren.sqlite
 
   // Initialize database schema
   db.exec(SCHEMA);
+
+  // Preserve the old server-wide feed and its watermark in its original channel.
+  if (!db.pragma('table_info(osu_map_posts)').some((column) => column.name === 'channel_id')) {
+    db.transaction(() => {
+      db.exec(`
+        ALTER TABLE osu_map_settings RENAME TO legacy_osu_map_settings;
+        ALTER TABLE osu_map_posts RENAME TO legacy_osu_map_posts;
+      `);
+      db.exec(SCHEMA);
+      db.exec(`
+        INSERT INTO osu_map_settings
+          SELECT guild_id, channel_id, mode_filter, status_filter, updated_at
+          FROM legacy_osu_map_settings WHERE channel_id IS NOT NULL;
+        INSERT INTO osu_map_posts (guild_id, channel_id, beatmapset_id, status)
+          SELECT posts.guild_id, settings.channel_id, posts.beatmapset_id, posts.status
+          FROM legacy_osu_map_posts AS posts
+          JOIN legacy_osu_map_settings AS settings ON settings.guild_id = posts.guild_id
+          WHERE settings.channel_id IS NOT NULL;
+        DROP TABLE legacy_osu_map_posts;
+        DROP TABLE legacy_osu_map_settings;
+      `);
+    })();
+  }
 
   // Prepared statements for high performance
   const stmts = {
@@ -109,19 +134,30 @@ function createSqliteStore({ dbPath = path.join(__dirname, '../data/alren.sqlite
         updated_at = excluded.updated_at
     `),
     getMapSettings: db.prepare(
-      'SELECT channel_id, mode_filter, status_filter FROM osu_map_settings WHERE guild_id = ? LIMIT 1'
+      'SELECT channel_id, mode_filter, status_filter FROM osu_map_settings WHERE guild_id = ? AND channel_id = ? LIMIT 1'
+    ),
+    getDefaultMapSettings: db.prepare(
+      'SELECT channel_id, mode_filter, status_filter FROM osu_map_settings WHERE guild_id = ? ORDER BY updated_at DESC, channel_id LIMIT 1'
     ),
     saveMapSettings: db.prepare(`
       INSERT INTO osu_map_settings (guild_id, channel_id, mode_filter, status_filter, updated_at)
       VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(guild_id) DO UPDATE SET
-        channel_id = excluded.channel_id,
+      ON CONFLICT(guild_id, channel_id) DO UPDATE SET
         mode_filter = excluded.mode_filter,
         status_filter = excluded.status_filter,
         updated_at = excluded.updated_at
     `),
     listMapSettings: db.prepare(
-      'SELECT guild_id, channel_id, mode_filter, status_filter FROM osu_map_settings WHERE channel_id IS NOT NULL'
+      'SELECT guild_id, channel_id, mode_filter, status_filter FROM osu_map_settings ORDER BY guild_id, channel_id'
+    ),
+    listGuildMapSettings: db.prepare(
+      'SELECT guild_id, channel_id, mode_filter, status_filter FROM osu_map_settings WHERE guild_id = ? ORDER BY channel_id'
+    ),
+    deleteMapSettings: db.prepare(
+      'DELETE FROM osu_map_settings WHERE guild_id = ? AND channel_id = ?'
+    ),
+    deleteMapPosts: db.prepare(
+      'DELETE FROM osu_map_posts WHERE guild_id = ? AND channel_id = ?'
     ),
     getCommunityAlertSettings: db.prepare(
       'SELECT channel_id, bn_mode_filter FROM community_alert_settings WHERE guild_id = ? LIMIT 1'
@@ -138,11 +174,11 @@ function createSqliteStore({ dbPath = path.join(__dirname, '../data/alren.sqlite
       'SELECT guild_id, channel_id, bn_mode_filter FROM community_alert_settings WHERE channel_id IS NOT NULL'
     ),
     hasPostedMap: db.prepare(
-      'SELECT 1 FROM osu_map_posts WHERE guild_id = ? AND beatmapset_id = ? AND status = ? LIMIT 1'
+      'SELECT 1 FROM osu_map_posts WHERE guild_id = ? AND channel_id = ? AND beatmapset_id = ? AND status = ? LIMIT 1'
     ),
     markMapPosted: db.prepare(`
-      INSERT OR IGNORE INTO osu_map_posts (guild_id, beatmapset_id, status)
-      VALUES (?, ?, ?)
+      INSERT OR IGNORE INTO osu_map_posts (guild_id, channel_id, beatmapset_id, status)
+      VALUES (?, ?, ?, ?)
     `),
     createVerificationRequest: db.prepare(`
       INSERT OR REPLACE INTO osu_verification_requests (channel_id, discord_user_id, expires_at, guild_id, osu_user_id, state)
@@ -199,16 +235,35 @@ function createSqliteStore({ dbPath = path.join(__dirname, '../data/alren.sqlite
     stmts.saveVerificationSettings.run(guildId, channelId ?? null, roleId ?? null, new Date().toISOString());
   }
 
-  async function getMapSettings(guildId) {
-    return stmts.getMapSettings.get(guildId) ?? null;
+  async function getMapSettings(guildId, channelId) {
+    return (channelId
+      ? stmts.getMapSettings.get(guildId, channelId)
+      : stmts.getDefaultMapSettings.get(guildId)) ?? null;
   }
+
+  const saveMapSettingsTx = db.transaction((guildId, { channelId, mode, status }) => {
+    const previous = stmts.getMapSettings.get(guildId, channelId);
+    if (previous && (previous.mode_filter !== mode || previous.status_filter !== status)) {
+      stmts.deleteMapPosts.run(guildId, channelId);
+    }
+    stmts.saveMapSettings.run(guildId, channelId, mode ?? null, status ?? null, new Date().toISOString());
+  });
 
   async function saveMapSettings(guildId, { channelId, mode, status }) {
-    stmts.saveMapSettings.run(guildId, channelId ?? null, mode ?? null, status ?? null, new Date().toISOString());
+    saveMapSettingsTx(guildId, { channelId, mode, status });
   }
 
-  async function listMapSettings() {
-    return stmts.listMapSettings.all();
+  async function listMapSettings(guildId) {
+    return guildId ? stmts.listGuildMapSettings.all(guildId) : stmts.listMapSettings.all();
+  }
+
+  const deleteMapSettingsTx = db.transaction((guildId, channelId) => {
+    stmts.deleteMapPosts.run(guildId, channelId);
+    return stmts.deleteMapSettings.run(guildId, channelId).changes > 0;
+  });
+
+  async function deleteMapSettings(guildId, channelId) {
+    return deleteMapSettingsTx(guildId, channelId);
   }
 
   async function getCommunityAlertSettings(guildId) {
@@ -223,13 +278,17 @@ function createSqliteStore({ dbPath = path.join(__dirname, '../data/alren.sqlite
     return stmts.listCommunityAlertSettings.all();
   }
 
-  async function hasPostedMap(guildId, beatmapsetId, status) {
-    const row = stmts.hasPostedMap.get(guildId, String(beatmapsetId), status);
+  async function hasPostedMap(guildId, beatmapsetId, status, channelId) {
+    const targetChannel = channelId || (await getMapSettings(guildId))?.channel_id;
+    if (!targetChannel) return false;
+    const row = stmts.hasPostedMap.get(guildId, targetChannel, String(beatmapsetId), status);
     return Boolean(row);
   }
 
-  async function markMapPosted(guildId, beatmapsetId, status) {
-    stmts.markMapPosted.run(guildId, String(beatmapsetId), status);
+  async function markMapPosted(guildId, beatmapsetId, status, channelId) {
+    const targetChannel = channelId || (await getMapSettings(guildId))?.channel_id;
+    if (!targetChannel) throw new Error('A beatmap feed channel is required.');
+    stmts.markMapPosted.run(guildId, targetChannel, String(beatmapsetId), status);
   }
 
   async function createVerificationRequest({ channelId, discordUserId, expiresAt, guildId, osuUserId, state }) {
@@ -259,6 +318,7 @@ function createSqliteStore({ dbPath = path.join(__dirname, '../data/alren.sqlite
     close,
     consumeVerificationRequest,
     createVerificationRequest,
+    deleteMapSettings,
     deleteVerificationRequest,
     findOtherOwner,
     getCommunityAlertSettings,

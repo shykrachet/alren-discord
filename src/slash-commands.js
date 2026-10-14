@@ -8,26 +8,28 @@ const {
   createHelpLanguagePrompt,
 } = require('./message-handler');
 const { createMapEmbed } = require('./osu-maps');
+const { modeIcon } = require('./mode-icons');
 
 const MAP_STATUS_CHOICES = [
   { name: 'Ranked', value: 'ranked' },
   { name: 'Qualified', value: 'qualified' },
   { name: 'Loved', value: 'loved' },
+  { name: 'Ranked + Loved', value: 'ranked_loved' },
   { name: 'All statuses', value: 'all' },
 ];
 const MAP_MODE_CHOICES = [
-  { name: '🌐 Any mode', value: 'any' },
-  { name: '🎯 osu!', value: 'osu' },
-  { name: '🥁 osu!taiko', value: 'taiko' },
-  { name: '🍎 osu!catch / fruits', value: 'catch' },
-  { name: '🎹 osu!mania', value: 'mania' },
+  { name: 'All Mode', value: 'any' },
+  { name: 'Standard (osu!)', value: 'osu' },
+  { name: 'osu!taiko', value: 'taiko' },
+  { name: 'osu!catch / fruits', value: 'catch' },
+  { name: 'osu!mania', value: 'mania' },
 ];
 const BN_MODE_CHOICES = [
-  { name: '🌐 All osu! modes', value: 'all' },
-  { name: '🎯 Standard (osu!)', value: 'osu' },
-  { name: '🥁 Taiko', value: 'taiko' },
-  { name: '🍎 Catch / fruits', value: 'catch' },
-  { name: '🎹 Mania', value: 'mania' },
+  { name: 'All Mode', value: 'all' },
+  { name: 'Standard (osu!)', value: 'osu' },
+  { name: 'Taiko', value: 'taiko' },
+  { name: 'Catch / fruits', value: 'catch' },
+  { name: 'Mania', value: 'mania' },
 ];
 const HELP_LANGUAGE_CHOICES = [
   { name: 'ไทย (TH)', value: 'th' },
@@ -75,11 +77,11 @@ const QUICK_MAP_COMMAND = new SlashCommandBuilder()
   .setDescription('สุ่ม beatmap พร้อมรูปปกลงในห้องนี้')
   .addStringOption((option) => option
     .setName('status')
-    .setDescription('สถานะของแผนที่ (ไม่ใส่จะใช้ค่าที่เซิร์ฟเวอร์ตั้งไว้)')
+    .setDescription('สถานะของแผนที่ (ไม่ใส่จะใช้ค่าที่ห้องนี้ตั้งไว้)')
     .addChoices(...MAP_STATUS_CHOICES))
   .addStringOption((option) => option
     .setName('mode')
-    .setDescription('โหมดเกม (ไม่ใส่จะใช้ค่าที่เซิร์ฟเวอร์ตั้งไว้)')
+    .setDescription('โหมดเกม (ไม่ใส่จะใช้ค่าที่ห้องนี้ตั้งไว้)')
     .addChoices(...MAP_MODE_CHOICES));
 
 const SETUP_COMMAND = new SlashCommandBuilder()
@@ -100,19 +102,22 @@ const SETUP_COMMAND = new SlashCommandBuilder()
       .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)))
   .addSubcommand((subcommand) => subcommand
     .setName('beatmap')
-    .setDescription('ตั้งค่า beatmap feed อัตโนมัติ')
+    .setDescription('ตั้ง feed แยกโหมดต่อห้อง เช่น mania → #mania, standard → #standard')
     .addChannelOption((option) => option
       .setName('channel')
-      .setDescription('ห้องสำหรับส่ง beatmap อัตโนมัติ')
+      .setDescription('ห้องที่จะตั้งค่า (ไม่ใส่ใช้ห้องนี้ ไม่กระทบ feed ห้องอื่น)')
       .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
     .addStringOption((option) => option
       .setName('status')
-      .setDescription('สถานะ beatmap เริ่มต้น')
+      .setDescription('สถานะของห้องนี้ (เลือก Ranked + Loved เพื่อรับทั้งสองสถานะ)')
       .addChoices(...MAP_STATUS_CHOICES))
     .addStringOption((option) => option
       .setName('mode')
-      .setDescription('โหมด beatmap เริ่มต้น')
-      .addChoices(...MAP_MODE_CHOICES)))
+      .setDescription('โหมดของห้องนี้: Standard, Taiko, Catch, Mania หรือทุกโหมด')
+      .addChoices(...MAP_MODE_CHOICES))
+    .addBooleanOption((option) => option
+      .setName('enabled')
+      .setDescription('เปิดหรือปิด feed เฉพาะห้องที่เลือก')))
   .addSubcommand((subcommand) => subcommand
     .setName('alerts')
     .setDescription('ตั้งค่า BN และ Mappers’ Guild alerts')
@@ -167,14 +172,19 @@ function createPrivateCommandContext(interaction) {
   };
 }
 
+function describeMode(mode, choices) {
+  const choice = choices.find((item) => item.value === mode) || choices[0];
+  return ['any', 'all'].includes(choice.value) ? choice.name : `${modeIcon(choice.value)} ${choice.name}`;
+}
+
 function describeFilters({ mode, status }) {
-  const modeName = MAP_MODE_CHOICES.find((choice) => choice.value === mode)?.name ?? '🌐 Any mode';
+  const modeName = describeMode(mode, MAP_MODE_CHOICES);
   const statusName = MAP_STATUS_CHOICES.find((choice) => choice.value === status)?.name ?? 'Ranked';
   return `${statusName} · ${modeName}`;
 }
 
 function describeBnMode(mode) {
-  return BN_MODE_CHOICES.find((choice) => choice.value === mode)?.name ?? '🌐 All osu! modes';
+  return describeMode(mode, BN_MODE_CHOICES);
 }
 
 function errorReason(error) {
@@ -192,8 +202,8 @@ function createMapStatusEmbed(map) {
     .setColor(configured ? 0x22c55e : 0x5865f2)
     .setTitle('🎵 osu! beatmap feed settings')
     .setDescription(configured
-      ? 'Automatic beatmap feed is configured for this server.'
-      : 'Automatic beatmap feed is not configured yet. Use `/setup beatmap`.')
+      ? 'Automatic beatmap feed is configured for this channel. Use `/setup status` to view all channel feeds.'
+      : 'Automatic beatmap feed is not configured for this channel yet. Use `/setup beatmap`.')
     .addFields(
       { name: '📣 Channel', value: map?.channel_id ? `<#${map.channel_id}>` : 'Not configured', inline: true },
       { name: '🔎 Filters', value: describeFilters({ mode: map?.mode_filter || 'any', status: map?.status_filter || 'ranked' }), inline: true },
@@ -203,14 +213,22 @@ function createMapStatusEmbed(map) {
 }
 
 function createSetupEmbed({
-  alerts, map, roleId, updated, verifyChannelId,
+  alerts, maps = [], roleId, updated, verifyChannelId,
 }) {
   const verifyText = roleId || verifyChannelId
     ? `${roleId ? `<@&${roleId}>` : 'No role'}\n${verifyChannelId ? `<#${verifyChannelId}>` : 'No result channel'}`
     : 'ยังไม่ได้ตั้งค่า';
-  const mapText = map?.channel_id
-    ? `<#${map.channel_id}>\n${describeFilters({ mode: map.mode_filter, status: map.status_filter })}`
-    : 'ยังไม่ได้ตั้งค่า';
+  const mapLines = maps.map((map) => `<#${map.channel_id}> — ${describeFilters({ mode: map.mode_filter, status: map.status_filter })}`);
+  const visibleMapLines = [];
+  for (const line of mapLines) {
+    // Leave room for the omitted count within Discord's 1024-character field limit.
+    if ([...visibleMapLines, line].join('\n').length > 950) break;
+    visibleMapLines.push(line);
+  }
+  if (visibleMapLines.length < mapLines.length) {
+    visibleMapLines.push(`… อีก ${mapLines.length - visibleMapLines.length} ห้อง`);
+  }
+  const mapText = visibleMapLines.join('\n') || 'ยังไม่ได้ตั้งค่า';
   const alertsText = alerts?.channel_id
     ? `<#${alerts.channel_id}>\n${describeBnMode(alerts.bn_mode_filter || 'all')}`
     : 'ยังไม่ได้ตั้งค่า';
@@ -222,7 +240,7 @@ function createSetupEmbed({
       : 'ใส่เฉพาะตัวเลือกที่ต้องการเปลี่ยน แล้วเรียก `/setup` อีกครั้ง')
     .addFields(
       { name: '✅ Verify', value: verifyText, inline: true },
-      { name: '🎵 Beatmap feed', value: mapText, inline: true },
+      { name: '🎵 Beatmap feeds (แยกตามห้อง)', value: mapText, inline: false },
       { name: '🔔 BN alerts', value: alertsText, inline: true },
     )
     .setFooter({ text: 'เฉพาะผู้มีสิทธิ์ Manage Server เท่านั้นที่ตั้งค่าได้' })
@@ -318,7 +336,6 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
         const section = interaction.options.getSubcommand(false) || 'status';
         let updated = false;
         let currentVerify = await store.getVerificationSettings(interaction.guildId);
-        let currentMap = await store.getMapSettings(interaction.guildId);
         let currentAlerts = await store.getCommunityAlertSettings(interaction.guildId);
 
         if (section === 'verify') {
@@ -341,18 +358,18 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
           const beatmapChannel = interaction.options.getChannel('channel');
           const mapStatus = interaction.options.getString('status');
           const mapMode = interaction.options.getString('mode');
-          if (beatmapChannel || mapStatus || mapMode) {
-            currentMap = await osuMaps.configureFeed({
-              channelId: beatmapChannel?.id || currentMap?.channel_id || interaction.channelId,
+          const enabled = interaction.options.getBoolean('enabled');
+          const channelId = beatmapChannel?.id || interaction.channelId;
+          if (enabled === false) {
+            await store.deleteMapSettings(interaction.guildId, channelId);
+            updated = true;
+          } else if (beatmapChannel || mapStatus || mapMode || enabled === true) {
+            await osuMaps.configureFeed({
+              channelId,
               guildId: interaction.guildId,
-              mode: mapMode || currentMap?.mode_filter || 'any',
-              status: mapStatus || currentMap?.status_filter || 'ranked',
+              mode: mapMode ?? undefined,
+              status: mapStatus ?? undefined,
             });
-            currentMap = {
-              channel_id: currentMap.channelId,
-              mode_filter: currentMap.mode,
-              status_filter: currentMap.status,
-            };
             updated = true;
           }
         }
@@ -376,7 +393,7 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
         await interaction.editReply({
           embeds: [createSetupEmbed({
             alerts: currentAlerts,
-            map: currentMap,
+            maps: await store.listMapSettings(interaction.guildId),
             roleId: currentVerify?.role_id,
             updated,
             verifyChannelId: currentVerify?.channel_id,
@@ -535,7 +552,7 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
 
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       try {
-        const map = await store.getMapSettings(interaction.guildId);
+        const map = await store.getMapSettings(interaction.guildId, interaction.channelId);
         await interaction.editReply({ embeds: [createMapStatusEmbed(map)] });
       } catch (error) {
         console.error('Beatmap status failed:', error.message);
@@ -558,6 +575,7 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
       await interaction.deferReply();
       try {
         const result = await osuMaps.getRandomMap({
+          channelId: interaction.channelId,
           guildId: interaction.guildId,
           mode: interaction.options.getString('mode') ?? undefined,
           status: interaction.options.getString('status') ?? undefined,

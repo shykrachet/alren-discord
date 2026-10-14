@@ -1,5 +1,8 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
+const { MessageFlags, PermissionsBitField } = require('discord.js');
+const { createSqliteStore } = require('../src/sqlite-store');
+const { MODE_DEFINITIONS, syncApplicationModeEmojis } = require('../src/mode-icons');
 
 const {
   createInteractionHandler,
@@ -52,6 +55,18 @@ test('registers global commands and removes legacy guild commands', async () => 
   assert.equal(calls[0].options.body.some((command) => command.name === 'verify-role-status'), false);
   const setupCommand = calls[0].options.body.find((command) => command.name === 'setup');
   assert.deepEqual(setupCommand.options.map((option) => option.name), ['status', 'verify', 'beatmap', 'alerts']);
+  const beatmapOptions = setupCommand.options.find((option) => option.name === 'beatmap').options;
+  assert.deepEqual(beatmapOptions.map((option) => option.name), ['channel', 'status', 'mode', 'enabled']);
+  const modeChoices = beatmapOptions.find((option) => option.name === 'mode').choices;
+  assert.deepEqual(modeChoices.map((choice) => choice.value), ['any', 'osu', 'taiko', 'catch', 'mania']);
+  assert.equal(modeChoices[0].name, 'All Mode');
+  assert.deepEqual(modeChoices.map((choice) => choice.name), ['All Mode', 'Standard (osu!)', 'osu!taiko', 'osu!catch / fruits', 'osu!mania']);
+  const bnChoices = setupCommand.options.find((option) => option.name === 'alerts').options.find((option) => option.name === 'bn_mode').choices;
+  assert.equal(bnChoices[0].name, 'All Mode');
+  assert.match(modeChoices.find((choice) => choice.value === 'osu').name, /Standard/);
+  const statusChoice = { name: 'Ranked + Loved', value: 'ranked_loved' };
+  assert.ok(beatmapOptions.find((option) => option.name === 'status').choices.some((choice) => choice.name === statusChoice.name && choice.value === statusChoice.value));
+  assert.ok(calls[0].options.body.find((command) => command.name === 'map').options.find((option) => option.name === 'status').choices.some((choice) => choice.value === statusChoice.value));
   const quickVerifyCommand = calls[0].options.body.find((command) => command.name === 'verify');
   assert.equal(quickVerifyCommand.options[0].required, false);
   assert.deepEqual(calls.slice(1), [
@@ -194,6 +209,7 @@ test('setup verify configures a selected verification role', async () => {
       isConfigured: true,
       getCommunityAlertSettings: async () => null,
       getMapSettings: async () => null,
+      listMapSettings: async () => [],
       getVerificationSettings: async () => ({ channel_id: selectedChannel.id, role_id: selectedRole.id }),
     },
   });
@@ -204,6 +220,110 @@ test('setup verify configures a selected verification role', async () => {
   assert.equal(configured[0][1].role, selectedRole);
   assert.equal(configured[0][1].channel, selectedChannel);
   assert.match(reply.embeds[0].toJSON().title, /บันทึก/);
+});
+
+function setupInteraction({ channel = null, channelId = 'commands', enabled = null, mode = null, status = null, section = 'beatmap', canManage = true, inGuild = true } = {}) {
+  return {
+    commandName: 'setup',
+    guildId: 'guild',
+    channelId,
+    inGuild: () => inGuild,
+    isChatInputCommand: () => true,
+    memberPermissions: { has: (permission) => canManage && permission === PermissionsBitField.Flags.ManageGuild },
+    options: {
+      getChannel: () => channel,
+      getString: (name) => ({ mode, status }[name] ?? null),
+      getBoolean: () => enabled,
+      getSubcommand: () => section,
+    },
+    async deferReply(payload) { this.deferred = payload; },
+    async reply(payload) { this.result = payload; },
+    async editReply(payload) { this.result = payload; },
+    async deleteReply() {},
+  };
+}
+
+test('setup beatmap adds separate mode channels, displays every feed, and disables only the selected channel', async (t) => {
+  await syncApplicationModeEmojis({
+    emojis: {
+      async fetch() { return Object.values(MODE_DEFINITIONS).map((mode, index) => ({ id: String(index + 10), name: mode.emojiName })); },
+      async create() { throw new Error('Existing mode emojis should be reused.'); },
+    },
+  });
+  const store = createSqliteStore({ dbPath: ':memory:' });
+  t.after(() => store.close());
+  const configured = [];
+  const handler = createInteractionHandler({
+    store,
+    osuMaps: {
+      async configureFeed(settings) {
+        configured.push(settings);
+        const previous = await store.getMapSettings(settings.guildId, settings.channelId);
+        const resolved = { ...settings, mode: settings.mode || previous?.mode_filter || 'any', status: settings.status || previous?.status_filter || 'ranked' };
+        await store.saveMapSettings(settings.guildId, resolved);
+        return resolved;
+      },
+    },
+  });
+  const mania = setupInteraction({ channel: { id: 'mania' }, mode: 'mania', status: 'ranked_loved' });
+  await handler(mania);
+  const standard = setupInteraction({ channel: { id: 'standard' }, mode: 'osu' });
+  await handler(standard);
+  assert.deepEqual(configured.map((settings) => [settings.channelId, settings.mode]), [['mania', 'mania'], ['standard', 'osu']]);
+  assert.equal(mania.deferred.flags, MessageFlags.Ephemeral);
+  assert.equal((await store.getMapSettings('guild', 'mania')).status_filter, 'ranked_loved');
+  assert.equal((await store.getMapSettings('guild', 'standard')).status_filter, 'ranked');
+
+  const currentChannel = setupInteraction({ channelId: 'taiko', mode: 'taiko' });
+  await handler(currentChannel);
+  assert.equal(configured.at(-1).channelId, 'taiko');
+  const status = setupInteraction({ section: 'status' });
+  await handler(status);
+  const mapField = status.result.embeds[0].toJSON().fields.find((field) => field.name.includes('Beatmap'));
+  assert.match(mapField.value, /<#mania>.*Ranked \+ Loved.*mania/);
+  assert.match(mapField.value, /<#standard>.*Ranked.*Standard/);
+  assert.match(mapField.value, /<#taiko>.*Ranked.*taiko/);
+  assert.match(mapField.value, /<:alren_mode_mania:13>/);
+  assert.match(mapField.value, /<:alren_mode_osu:10>/);
+  assert.match(mapField.value, /<:alren_mode_taiko:11>/);
+
+  const disable = setupInteraction({ channel: { id: 'mania' }, enabled: false });
+  await handler(disable);
+  assert.equal(await store.getMapSettings('guild', 'mania'), null);
+  assert.equal((await store.listMapSettings('guild')).length, 2);
+  assert.doesNotMatch(disable.result.embeds[0].toJSON().fields.find((field) => field.name.includes('Beatmap')).value, /<#mania>/);
+});
+
+test('setup beatmap rejects DMs and members without Manage Server before changing feeds', async (t) => {
+  const store = createSqliteStore({ dbPath: ':memory:' });
+  t.after(() => store.close());
+  const handler = createInteractionHandler({ store, osuMaps: {} });
+  for (const options of [{ canManage: false }, { inGuild: false }]) {
+    const interaction = setupInteraction({ ...options, mode: 'mania', enabled: false });
+    await handler(interaction);
+    assert.equal(interaction.result.flags, MessageFlags.Ephemeral);
+    assert.match(interaction.result.content, /Manage Server|เซิร์ฟเวอร์เท่านั้น/);
+    assert.equal(interaction.deferred, undefined);
+  }
+  assert.deepEqual(await store.listMapSettings(), []);
+});
+
+test('map passes the current channel to the service and preserves explicit overrides', async () => {
+  let request;
+  const interaction = setupInteraction({ channelId: 'mania', mode: 'osu', status: 'qualified' });
+  interaction.commandName = 'map';
+  const handler = createInteractionHandler({
+    osuMaps: {
+      async getRandomMap(options) {
+        request = options;
+        return { map: { id: 123, status: 'qualified' }, filters: { mode: options.mode, status: options.status } };
+      },
+    },
+  });
+  await handler(interaction);
+  assert.deepEqual(request, { channelId: 'mania', guildId: 'guild', mode: 'osu', status: 'qualified' });
+  assert.equal(interaction.result.embeds[0].toJSON().url, 'https://osu.ppy.sh/beatmapsets/123');
+  assert.match(interaction.result.content, /<:alren_mode_osu:10>/);
 });
 
 test('verify-setting saves the selected role and channel', async () => {
@@ -311,6 +431,7 @@ test('verification slash commands report service errors to the user', async () =
 
 test('osumap-status shows configured beatmap feed settings', async () => {
   let reply;
+  let mode = 'mania';
   const interaction = {
     channelId: 'channel',
     commandName: 'osumap-status',
@@ -324,7 +445,7 @@ test('osumap-status shows configured beatmap feed settings', async () => {
   const handler = createInteractionHandler({
     store: {
       async getMapSettings() {
-        return { channel_id: 'beatmaps', mode_filter: 'mania', status_filter: 'ranked' };
+        return { channel_id: 'beatmaps', mode_filter: mode, status_filter: 'ranked' };
       },
     },
   });
@@ -335,6 +456,10 @@ test('osumap-status shows configured beatmap feed settings', async () => {
   assert.match(embed.title, /beatmap feed settings/);
   assert.match(embed.fields[0].value, /<#beatmaps>/);
   assert.match(embed.fields[1].value, /Mania|mania|osu!mania/);
+  assert.match(embed.fields[1].value, /<:alren_mode_mania:13>/);
+  mode = 'any';
+  await handler(interaction);
+  assert.equal(reply.embeds[0].toJSON().fields[1].value, 'Ranked · All Mode');
 });
 
 test('help language dropdown updates the guide in place', async () => {

@@ -35,6 +35,7 @@ function normalizeMode(mode) {
 
 function modeIcon(mode) {
   const normalized = normalizeMode(mode);
+  if (normalized === 'any' || normalized === 'all') return '';
   return applicationEmojiMentions.get(normalized)
     || MODE_DEFINITIONS[normalized]?.fallback
     || '🎮';
@@ -42,6 +43,7 @@ function modeIcon(mode) {
 
 function modeLabel(mode) {
   const normalized = normalizeMode(mode);
+  if (normalized === 'any' || normalized === 'all') return 'All Mode';
   const definition = MODE_DEFINITIONS[normalized];
   return definition ? `${modeIcon(normalized)} ${definition.label}` : String(mode || 'Unknown');
 }

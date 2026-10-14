@@ -8,6 +8,7 @@ const {
   StringSelectMenuOptionBuilder,
 } = require('discord.js');
 const { createMapEmbed } = require('./osu-maps');
+const { modeLabel } = require('./mode-icons');
 
 const ALREN_COLOR = 0xff66aa;
 const SUCCESS_COLOR = 0x22c55e;
@@ -52,7 +53,7 @@ function createHelpEmbed(language = 'th') {
       .addFields(
         { name: '💬 Private chat', value: '`/alren message:...` or `!alren ...`\n`/alrenclear` or `!alrenclear`' },
         { name: '✅ osu! verification', value: '`/verify` — sign in with osu! OAuth automatically\n`/verify-status` or `!verify-status`' },
-        { name: '🎵 Beatmaps', value: '`/map` — post a random beatmap with cover artwork\n`/setup beatmap` — automatic feed\n`/setup status` — current feed settings' },
+        { name: '🎵 Beatmaps', value: '`/map` — random beatmap using this channel’s filters\n`/setup beatmap channel:#mania mode:mania status:ranked_loved` — Ranked + Loved feed per channel; repeat for Standard, Taiko or Catch\n`/setup beatmap enabled:false` — disable this channel’s feed\n`/setup status` — view all channel feeds' },
         { name: '🛠️ Server setup', value: '`/setup status` — view all settings\n`/setup verify`, `/setup beatmap`, `/setup alerts`' },
         { name: 'ℹ️ Utilities', value: '`/help language:English` or `!alrenhelp en`\n`/ping` or `!ping`' },
         { name: '🌐 Full command guide', value: `[Open the web guide](${COMMANDS_URL})` },
@@ -66,7 +67,7 @@ function createHelpEmbed(language = 'th') {
     .addFields(
       { name: '💬 แชทส่วนตัว', value: '`/alren message:...` หรือ `!alren ...`\n`/alrenclear` หรือ `!alrenclear`' },
       { name: '✅ ยืนยันบัญชี osu!', value: '`/verify` — กดปุ่ม OAuth แล้วระบบดึงบัญชีให้อัตโนมัติ\n`/verify-status` หรือ `!verify-status`' },
-      { name: '🎵 Beatmap', value: '`/map` — สุ่ม beatmap พร้อมรูปปก\n`/setup beatmap` — ตั้ง feed อัตโนมัติ\n`/setup status` — ดูค่าปัจจุบัน' },
+      { name: '🎵 Beatmap', value: '`/map` — สุ่ม beatmap ตามโหมดของห้องนี้\n`/setup beatmap channel:#mania mode:mania status:ranked_loved` — รับ Ranked + Loved แยกห้อง ทำซ้ำสำหรับ Standard, Taiko และ Catch ได้\n`/setup beatmap enabled:false` — ปิด feed ห้องนี้\n`/setup status` — ดู feed ทุกห้อง' },
       { name: '🛠️ ตั้งค่าเซิร์ฟเวอร์', value: '`/setup status` — ดูค่าทั้งหมด\n`/setup verify`, `/setup beatmap`, `/setup alerts`' },
       { name: 'ℹ️ เครื่องมือ', value: '`/help language:ไทย` หรือ `!alrenhelp th`\n`/ping` หรือ `!ping`' },
       { name: '🌐 คู่มือบนเว็บ', value: `[เปิดหน้า commands](${COMMANDS_URL})` },
@@ -254,10 +255,10 @@ function createMessageHandler({ bot, chat, osuMaps, osuVerification, store }) {
     if (command === 'osumap') {
       if (!message.inGuild()) return;
       const values = args.toLowerCase().split(/\s+/).filter(Boolean);
-      const status = values.find((value) => ['ranked', 'qualified', 'loved', 'all'].includes(value));
+      const status = values.find((value) => ['ranked', 'qualified', 'loved', 'ranked_loved', 'all'].includes(value));
       const mode = values.find((value) => ['any', 'osu', 'taiko', 'catch', 'mania'].includes(value));
       try {
-        const result = await osuMaps.getRandomMap({ guildId: message.guildId, mode, status });
+        const result = await osuMaps.getRandomMap({ channelId: message.channelId, guildId: message.guildId, mode, status });
         await message.reply({ embeds: [createMapEmbed(result.map)] });
       } catch (error) {
         await message.reply({ embeds: [createStatusEmbed('Beatmap unavailable', error.message, ERROR_COLOR)] });
@@ -268,12 +269,12 @@ function createMessageHandler({ bot, chat, osuMaps, osuVerification, store }) {
     if (command === 'osumap-status') {
       if (!message.inGuild()) return;
       try {
-        const settings = await store.getMapSettings(message.guildId);
+        const settings = await store.getMapSettings(message.guildId, message.channelId);
         await message.reply({
           embeds: [createStatusEmbed(
             '🎵 Beatmap feed settings',
             settings?.channel_id
-              ? `Channel: <#${settings.channel_id}>\nStatus: **${settings.status_filter || 'ranked'}**\nMode: **${settings.mode_filter || 'any'}**`
+              ? `Channel: <#${settings.channel_id}>\nStatus: **${settings.status_filter || 'ranked'}**\nMode: **${modeLabel(settings.mode_filter || 'any')}**`
               : 'Automatic beatmap feed is not configured yet.',
             settings?.channel_id ? SUCCESS_COLOR : ALREN_COLOR,
           )],
@@ -290,12 +291,12 @@ function createMessageHandler({ bot, chat, osuMaps, osuVerification, store }) {
         return;
       }
       const values = args.toLowerCase().split(/\s+/).filter(Boolean);
-      const status = values.find((value) => ['ranked', 'qualified', 'loved', 'all'].includes(value));
+      const status = values.find((value) => ['ranked', 'qualified', 'loved', 'ranked_loved', 'all'].includes(value));
       const mode = values.find((value) => ['any', 'osu', 'taiko', 'catch', 'mania'].includes(value));
       try {
         const settings = await osuMaps.configureFeed({ channelId: message.channelId, guildId: message.guildId, mode, status });
         await message.reply({
-          embeds: [createStatusEmbed('🎵 Beatmap feed configured', `Channel: <#${message.channelId}>\nStatus: **${settings.status}**\nMode: **${settings.mode}**`, SUCCESS_COLOR)],
+          embeds: [createStatusEmbed('🎵 Beatmap feed configured', `Channel: <#${message.channelId}>\nStatus: **${settings.status}**\nMode: **${modeLabel(settings.mode)}**`, SUCCESS_COLOR)],
         });
       } catch (error) {
         await message.reply({ embeds: [createStatusEmbed('Could not save settings', error.message, ERROR_COLOR)] });

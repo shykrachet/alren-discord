@@ -5,8 +5,8 @@ const BN_SOURCE_URL = 'https://bn.mappersguild.com/api/relevantInfo';
 const MISSION_LOG_SOURCE_URL = 'https://mappersguild.com/api/logs/query';
 const BN_PAGE_URL = 'https://bn.mappersguild.com/';
 const MISSIONS_PAGE_URL = 'https://mappersguild.com/missions';
-const DEFAULT_CACHE_MS = 60 * 1000;
-const DEFAULT_INTERVAL_MINUTES = 5;
+const DEFAULT_INTERVAL_SECONDS = 30;
+const DEFAULT_CACHE_MS = DEFAULT_INTERVAL_SECONDS * 1000;
 
 const MODE_NAMES = {
   all: '🌐 All modes',
@@ -149,9 +149,6 @@ function normalizeMissionOpenings(data) {
 
 function createBnStatusEmbed(entry, isOpen) {
   const modeName = modeLabel(entry.mode);
-  const methods = entry.requestMethods
-    .map((method) => REQUEST_METHOD_NAMES[method] || method)
-    .join(', ') || 'See profile';
   const profileUrl = `https://osu.ppy.sh/users/${encodeURIComponent(entry.osuId)}`;
   const bnUrl = new URL(BN_PAGE_URL);
   bnUrl.searchParams.set('id', entry.id);
@@ -168,8 +165,17 @@ function createBnStatusEmbed(entry, isOpen) {
     .setDescription(isOpen
       ? `**[${entry.username}](${profileUrl})** is accepting **${modeName}** requests now.`
       : `**[${entry.username}](${profileUrl})** is no longer accepting **${modeName}** requests.`)
-    .addFields(
-      { name: isOpen ? '🟢 Status' : '🔴 Status', value: isOpen ? '**Open**' : '**Closed**', inline: true },
+    .setFooter({ text: 'BN request data • bn.mappersguild.com' });
+
+  const openedAt = Date.parse(entry.lastOpenedAt || '');
+  embed.setTimestamp(isOpen && !Number.isNaN(openedAt) ? new Date(openedAt) : new Date());
+  if (!isOpen) return embed;
+
+  const methods = entry.requestMethods
+    .map((method) => REQUEST_METHOD_NAMES[method] || method)
+    .join(', ') || 'See profile';
+  embed.addFields(
+      { name: '🟢 Status', value: '**Open**', inline: true },
       { name: '🕒 Last opened', value: relativeDiscordTime(entry.lastOpenedAt), inline: true },
       { name: '📨 Request methods', value: methods, inline: true },
       { name: '🗣️ Languages', value: entry.languages?.join(', ') || 'Not listed', inline: true },
@@ -178,8 +184,7 @@ function createBnStatusEmbed(entry, isOpen) {
       { name: `🎮 ${modeName} map preferences`, value: preferenceText(entry.mapPreferences, entry.mapNegativePreferences, entry.customMapPreferences), inline: true },
       { name: '🎧 Song details', value: preferenceText(entry.songDetailPreferences, entry.songDetailNegativePreferences, entry.customDetailPreferences), inline: true },
       { name: '🗺️ Mapper preferences', value: preferenceText(entry.mapperPreferences, entry.mapperNegativePreferences, entry.customMapperPreferences), inline: true },
-    )
-    .setFooter({ text: 'BN request data • bn.mappersguild.com' });
+    );
 
   if (entry.requestLink) {
     embed.addFields({ name: '🔗 Request link', value: `[Open request page ↗](${entry.requestLink})` });
@@ -189,8 +194,6 @@ function createBnStatusEmbed(entry, isOpen) {
   }
   if (entry.coverUrl) embed.setImage(entry.coverUrl);
   if (entry.avatarUrl) embed.setThumbnail(entry.avatarUrl);
-  const openedAt = Date.parse(entry.lastOpenedAt || '');
-  embed.setTimestamp(isOpen && !Number.isNaN(openedAt) ? new Date(openedAt) : new Date());
   return embed;
 }
 
@@ -214,6 +217,7 @@ function createMissionEmbed(mission) {
 function createCommunityAlertsService({
   fetchImpl = global.fetch,
   cacheMs = DEFAULT_CACHE_MS,
+  intervalSeconds = process.env.COMMUNITY_ALERT_INTERVAL_SECONDS,
   intervalMinutes = process.env.COMMUNITY_ALERT_INTERVAL_MINUTES,
 } = {}) {
   let bnStates;
@@ -316,10 +320,12 @@ function createCommunityAlertsService({
     if (typeof sendAlert !== 'function') throw new Error('A community alert callback is required.');
     if (monitorTimer) clearInterval(monitorTimer);
 
-    const requestedMinutes = Number(intervalMinutes || DEFAULT_INTERVAL_MINUTES);
-    const safeMinutes = Number.isFinite(requestedMinutes)
-      ? Math.min(Math.max(requestedMinutes, 1), 60)
-      : DEFAULT_INTERVAL_MINUTES;
+    const requestedSeconds = intervalSeconds != null
+      ? Number(intervalSeconds)
+      : Number(intervalMinutes ?? DEFAULT_INTERVAL_SECONDS / 60) * 60;
+    const safeSeconds = Number.isFinite(requestedSeconds)
+      ? Math.min(Math.max(requestedSeconds, 30), 3600)
+      : DEFAULT_INTERVAL_SECONDS;
     const run = async () => {
       if (monitorRunning) return;
       monitorRunning = true;
@@ -335,7 +341,7 @@ function createCommunityAlertsService({
     };
 
     run();
-    monitorTimer = setInterval(run, safeMinutes * 60 * 1000);
+    monitorTimer = setInterval(run, safeSeconds * 1000);
     monitorTimer.unref?.();
     return () => {
       clearInterval(monitorTimer);
@@ -348,7 +354,7 @@ function createCommunityAlertsService({
     if (requestUrl.pathname !== '/api/community-alerts') return false;
 
     response.setHeader('access-control-allow-origin', '*');
-    response.setHeader('cache-control', 'public, max-age=60');
+    response.setHeader('cache-control', 'no-store');
     response.setHeader('content-type', 'application/json; charset=utf-8');
     if (request.method !== 'GET') {
       response.writeHead(405, { allow: 'GET' });

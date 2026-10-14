@@ -30,7 +30,7 @@ function titleCase(value) {
 }
 
 function validateStatus(status) {
-  if (status === 'all' || STATUSES.includes(status)) return status;
+  if (status === 'all' || status === 'ranked_loved' || STATUSES.includes(status)) return status;
   throw new Error(`Unsupported beatmap status: ${status}`);
 }
 
@@ -94,13 +94,14 @@ function mapDate(beatmapset) {
 }
 
 function feedStatuses(status) {
+  if (status === 'ranked_loved') return ['ranked', 'loved'];
   return status === 'all' ? STATUSES : [status];
 }
 
-function feedIntervalMs() {
-  const requestedSeconds = process.env.OSU_MAP_FEED_INTERVAL_SECONDS != null
-    ? Number(process.env.OSU_MAP_FEED_INTERVAL_SECONDS)
-    : Number(process.env.OSU_MAP_FEED_INTERVAL_MINUTES || DEFAULT_FEED_INTERVAL_SECONDS / 60) * 60;
+function feedIntervalMs({ intervalSeconds, intervalMinutes }) {
+  const requestedSeconds = intervalSeconds != null
+    ? Number(intervalSeconds)
+    : Number(intervalMinutes ?? DEFAULT_FEED_INTERVAL_SECONDS / 60) * 60;
   const safeSeconds = Number.isFinite(requestedSeconds)
     ? Math.min(Math.max(requestedSeconds, 30), 3600)
     : DEFAULT_FEED_INTERVAL_SECONDS;
@@ -154,6 +155,8 @@ function createOsuMapService({
   clientSecret = OSU_CLIENT_SECRET,
   fetchImpl = global.fetch,
   random = Math.random,
+  intervalSeconds = process.env.OSU_MAP_FEED_INTERVAL_SECONDS,
+  intervalMinutes = process.env.OSU_MAP_FEED_INTERVAL_MINUTES,
 } = {}) {
   let accessToken;
   let accessTokenExpiresAt = 0;
@@ -233,13 +236,13 @@ function createOsuMapService({
     };
   }
 
-  async function getSavedSettings(guildId) {
+  async function getSavedSettings(guildId, channelId) {
     if (!store?.isConfigured) return null;
-    return store.getMapSettings(guildId);
+    return store.getMapSettings(guildId, channelId);
   }
 
-  async function resolveFilters({ guildId, mode, status }) {
-    const saved = await getSavedSettings(guildId);
+  async function resolveFilters({ channelId, guildId, mode, status }) {
+    const saved = await getSavedSettings(guildId, channelId);
     return {
       mode: validateMode(mode || saved?.mode_filter || 'any'),
       status: validateStatus(status || saved?.status_filter || 'ranked'),
@@ -266,11 +269,12 @@ function createOsuMapService({
     return entries;
   }
 
-  async function getRandomMap({ guildId, mode, status } = {}) {
-    const requestedFilters = await resolveFilters({ guildId, mode, status });
-    const selectedStatus = requestedFilters.status === 'all'
-      ? STATUSES[Math.floor(random() * STATUSES.length)]
-      : requestedFilters.status;
+  async function getRandomMap({ channelId, guildId, mode, status } = {}) {
+    const requestedFilters = await resolveFilters({ channelId, guildId, mode, status });
+    const statuses = feedStatuses(requestedFilters.status);
+    const selectedStatus = statuses.length > 1
+      ? statuses[Math.floor(random() * statuses.length)]
+      : statuses[0];
     const maps = await searchMaps({ mode: requestedFilters.mode, status: selectedStatus });
     if (!maps.length) throw new Error('No osu! beatmaps matched those filters.');
     const selectedMap = maps[Math.floor(random() * maps.length)];
@@ -285,20 +289,20 @@ function createOsuMapService({
     if (!store?.isConfigured) {
       throw new Error('Database is not configured.');
     }
-    const previous = await store.getMapSettings(guildId);
+    if (!guildId || !channelId) throw new Error('A server and beatmap feed channel are required.');
+    const previous = await store.getMapSettings(guildId, channelId);
     const settings = normalizeSettings({
       channelId,
       guildId,
       mode: mode || previous?.mode_filter || 'any',
       status: status || previous?.status_filter || 'ranked',
     });
-    await store.saveMapSettings(guildId, settings);
-
     // Prime each watched status so enabling the feed does not post existing maps as if they were new.
     const candidateGroups = await feedCandidatesByStatus(settings);
+    await store.saveMapSettings(guildId, settings);
     await Promise.all(candidateGroups.flatMap(([status, maps]) => {
       const newest = maps[0];
-      return newest ? [store.markMapPosted(guildId, newest.id, newest.status || status)] : [];
+      return newest ? [store.markMapPosted(guildId, newest.id, newest.status || status, channelId)] : [];
     }));
     return settings;
   }
@@ -308,7 +312,7 @@ function createOsuMapService({
     const unposted = [];
     for (const [status, maps] of candidateGroups) {
       for (const map of maps) {
-        if (await store.hasPostedMap(settings.guildId, map.id, map.status || status)) break;
+        if (await store.hasPostedMap(settings.guildId, map.id, map.status || status, settings.channelId)) break;
         unposted.push({ ...map, status: map.status || status });
       }
     }
@@ -329,10 +333,10 @@ function createOsuMapService({
           for (const mapSummary of mapSummaries) {
             const map = await getBeatmapset(mapSummary);
             await postMap({ map, settings });
-            await store.markMapPosted(settings.guildId, mapSummary.id, mapSummary.status);
+            await store.markMapPosted(settings.guildId, mapSummary.id, mapSummary.status, settings.channelId);
           }
         } catch (error) {
-          console.error(`Beatmap feed failed for server ${settings.guildId}:`, error.message);
+          console.error(`Beatmap feed failed for server ${settings.guildId}, channel ${settings.channelId}:`, error.message);
         }
       }
     } finally {
@@ -353,7 +357,7 @@ function createOsuMapService({
     });
 
     run();
-    feedTimer = setInterval(run, feedIntervalMs());
+    feedTimer = setInterval(run, feedIntervalMs({ intervalSeconds, intervalMinutes }));
     feedTimer.unref?.();
     return () => {
       clearInterval(feedTimer);
