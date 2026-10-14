@@ -66,17 +66,14 @@ test('prefix verification can start without an osu id', async () => {
   assert.equal(calls[0][1], undefined);
 });
 
-test('help cards support Thai and English', () => {
-  const thai = createHelpEmbed('th').toJSON();
-  const english = createHelpEmbed('en').toJSON();
-
-  assert.match(thai.title, /ภาษาไทย/);
-  assert.equal(thai.url, COMMANDS_URL);
-  assert.ok(thai.fields.at(-1).value.includes(COMMANDS_URL));
-  assert.match(thai.fields[0].name, /แชทส่วนตัว/);
+test('help cards display only the English guide', () => {
+  const english = createHelpEmbed().toJSON();
   assert.match(english.title, /English/);
   assert.equal(english.url, COMMANDS_URL);
   assert.match(english.fields[0].name, /Private chat/);
+  assert.ok(english.fields.at(-1).value.includes(COMMANDS_URL));
+  assert.doesNotMatch(JSON.stringify(english), /\p{Script=Thai}/u);
+  assert.deepEqual(createHelpEmbed('th').toJSON(), english);
 });
 
 test('prefix help selects English with !alrenhelp en', async () => {
@@ -87,16 +84,15 @@ test('prefix help selects English with !alrenhelp en', async () => {
   assert.match(input.sent[0].embeds[0].toJSON().title, /English/);
 });
 
-test('prefix help without a language sends the language dropdown', async () => {
+test('prefix help opens the English guide directly with the website button', async () => {
   const input = message('!alrenhelp');
   await createMessageHandler(dependencies())(input);
 
   const embed = input.sent[0].embeds[0].toJSON();
-  const menu = input.sent[0].components[0].toJSON().components[0];
-  const button = input.sent[0].components[1].toJSON().components[0];
-  assert.match(embed.title, /Choose a language/);
+  const button = input.sent[0].components[0].toJSON().components[0];
+  assert.match(embed.title, /English/);
   assert.equal(embed.url, COMMANDS_URL);
-  assert.equal(menu.custom_id, 'alrenhelp:language');
-  assert.deepEqual(menu.options.map((option) => option.value), ['th', 'en']);
+  assert.equal(input.sent[0].components.length, 1);
   assert.equal(button.url, COMMANDS_URL);
+  assert.doesNotMatch(JSON.stringify(input.sent[0]), /\p{Script=Thai}/u);
 });

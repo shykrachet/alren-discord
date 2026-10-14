@@ -2,6 +2,8 @@
 
 Alren is a Discord bot featuring osu! account verification, private AI chat, beatmap discovery and realtime updates, and BN / Mappers' Guild community alerts.
 
+All bot interface text is in English, including commands, help, notifications, verification pages and errors. AI chat also replies in English when users write in another language.
+
 ---
 
 ## Features
@@ -102,7 +104,7 @@ For existing deployments configured with the old minute intervals, set `OSU_MAP_
 
 | Command | Description |
 | --- | --- |
-| `/help [language]` | Display interactive command guide and documentation. |
+| `/help` | Display the English command guide and documentation. |
 | `/ping` | Check bot latency and online status. |
 | `/verify [osu_id]` | Initiate osu! OAuth account verification. |
 | `/verify-status` | View linked osu! account details for the current server. |

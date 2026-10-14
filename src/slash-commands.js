@@ -5,7 +5,6 @@ const {
   createAlrenEmbed,
   createHelpEmbed,
   createHelpComponents,
-  createHelpLanguagePrompt,
 } = require('./message-handler');
 const { createMapEmbed } = require('./osu-maps');
 const { modeIcon } = require('./mode-icons');
@@ -31,10 +30,6 @@ const BN_MODE_CHOICES = [
   { name: 'Catch / fruits', value: 'catch' },
   { name: 'Mania', value: 'mania' },
 ];
-const HELP_LANGUAGE_CHOICES = [
-  { name: 'ไทย (TH)', value: 'th' },
-  { name: 'English (EN)', value: 'en' },
-];
 
 const CHAT_COMMAND = new SlashCommandBuilder()
   .setName('alren')
@@ -54,11 +49,7 @@ const PING_COMMAND = new SlashCommandBuilder()
 
 const QUICK_HELP_COMMAND = new SlashCommandBuilder()
   .setName('help')
-  .setDescription('ดูเมนูคำสั่งทั้งหมดของ Alren แบบส่วนตัว')
-  .addStringOption((option) => option
-    .setName('language')
-    .setDescription('เลือกภาษาของคู่มือ / Choose guide language')
-    .addChoices(...HELP_LANGUAGE_CHOICES));
+  .setDescription('Show Alren’s command guide privately.');
 
 const VERIFY_STATUS_COMMAND = new SlashCommandBuilder()
   .setName('verify-status')
@@ -66,68 +57,68 @@ const VERIFY_STATUS_COMMAND = new SlashCommandBuilder()
 
 const QUICK_VERIFY_COMMAND = new SlashCommandBuilder()
   .setName('verify')
-  .setDescription('ยืนยันบัญชี osu! ด้วยปุ่ม OAuth แบบส่วนตัว')
+  .setDescription('Verify your osu! account privately with OAuth.')
   .addStringOption((option) => option
     .setName('osu_id')
-    .setDescription('ไม่ใส่ก็ได้ ระบบจะตรวจบัญชีจาก osu! ให้อัตโนมัติ')
+    .setDescription('Optional osu! user ID. Your account is detected automatically when omitted.')
     .setRequired(false));
 
 const QUICK_MAP_COMMAND = new SlashCommandBuilder()
   .setName('map')
-  .setDescription('สุ่ม beatmap พร้อมรูปปกลงในห้องนี้')
+  .setDescription('Post a random beatmap with cover artwork in this channel.')
   .addStringOption((option) => option
     .setName('status')
-    .setDescription('สถานะของแผนที่ (ไม่ใส่จะใช้ค่าที่ห้องนี้ตั้งไว้)')
+    .setDescription('Beatmap status. Defaults to this channel’s saved setting.')
     .addChoices(...MAP_STATUS_CHOICES))
   .addStringOption((option) => option
     .setName('mode')
-    .setDescription('โหมดเกม (ไม่ใส่จะใช้ค่าที่ห้องนี้ตั้งไว้)')
+    .setDescription('Game mode. Defaults to this channel’s saved setting.')
     .addChoices(...MAP_MODE_CHOICES));
 
 const SETUP_COMMAND = new SlashCommandBuilder()
   .setName('setup')
-  .setDescription('ตั้งค่า Verify, Beatmap และ BN alerts ในคำสั่งเดียว (สำหรับแอดมิน)')
+  .setDescription('Configure verification, beatmap feeds and BN alerts. Requires Manage Server.')
   .addSubcommand((subcommand) => subcommand
     .setName('status')
-    .setDescription('ดูค่าที่ตั้งไว้ทั้งหมดของ Alren'))
+    .setDescription('View all Alren settings for this server.'))
   .addSubcommand((subcommand) => subcommand
     .setName('verify')
-    .setDescription('ตั้งค่า role และห้องแสดงข้อมูลหลัง Verify')
+    .setDescription('Configure the verified role and verification result channel.')
     .addRoleOption((option) => option
       .setName('role')
-      .setDescription('ยศที่จะมอบให้สมาชิกหลัง Verify สำเร็จ'))
+      .setDescription('Role assigned after successful verification.'))
     .addChannelOption((option) => option
       .setName('channel')
-      .setDescription('ห้องสำหรับแสดงข้อมูลหลัง Verify สำเร็จ')
+      .setDescription('Channel for posting successful verification results.')
       .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)))
   .addSubcommand((subcommand) => subcommand
     .setName('beatmap')
-    .setDescription('ตั้ง feed แยกโหมดต่อห้อง เช่น mania → #mania, standard → #standard')
+    .setDescription('Configure a beatmap feed per channel, such as Mania in #mania or Standard in #standard.')
     .addChannelOption((option) => option
       .setName('channel')
-      .setDescription('ห้องที่จะตั้งค่า (ไม่ใส่ใช้ห้องนี้ ไม่กระทบ feed ห้องอื่น)')
+      .setDescription('Channel to configure. Defaults to this channel; other feeds are unaffected.')
       .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
     .addStringOption((option) => option
       .setName('status')
-      .setDescription('สถานะของห้องนี้ (เลือก Ranked + Loved เพื่อรับทั้งสองสถานะ)')
+      .setDescription('Status for this channel. Choose Ranked + Loved to receive both statuses.')
       .addChoices(...MAP_STATUS_CHOICES))
     .addStringOption((option) => option
       .setName('mode')
-      .setDescription('โหมดของห้องนี้: Standard, Taiko, Catch, Mania หรือทุกโหมด')
+      .setDescription('Mode for this channel: Standard, Taiko, Catch, Mania or All Mode.')
       .addChoices(...MAP_MODE_CHOICES))
     .addBooleanOption((option) => option
       .setName('enabled')
-      .setDescription('เปิดหรือปิด feed เฉพาะห้องที่เลือก')))
+      .setDescription('Enable or disable the feed in the selected channel.')))
   .addSubcommand((subcommand) => subcommand
     .setName('alerts')
-    .setDescription('ตั้งค่า BN และ Mappers’ Guild alerts')
+    .setDescription('Configure BN and Mappers’ Guild alerts.')
     .addChannelOption((option) => option
       .setName('channel')
-      .setDescription('ห้องสำหรับแจ้งเตือน BN และ Mappers’ Guild')
+      .setDescription('Channel for BN and Mappers’ Guild alerts.')
       .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
     .addStringOption((option) => option
       .setName('bn_mode')
-      .setDescription('โหมด BN ที่ต้องการแจ้งเตือน')
+      .setDescription('BN mode to receive alerts for.')
       .addChoices(...BN_MODE_CHOICES)));
 
 const COMMANDS = [
@@ -217,7 +208,7 @@ function createSetupEmbed({
 }) {
   const verifyText = roleId || verifyChannelId
     ? `${roleId ? `<@&${roleId}>` : 'No role'}\n${verifyChannelId ? `<#${verifyChannelId}>` : 'No result channel'}`
-    : 'ยังไม่ได้ตั้งค่า';
+    : 'Not configured';
   const mapLines = maps.map((map) => `<#${map.channel_id}> — ${describeFilters({ mode: map.mode_filter, status: map.status_filter })}`);
   const visibleMapLines = [];
   for (const line of mapLines) {
@@ -226,24 +217,24 @@ function createSetupEmbed({
     visibleMapLines.push(line);
   }
   if (visibleMapLines.length < mapLines.length) {
-    visibleMapLines.push(`… อีก ${mapLines.length - visibleMapLines.length} ห้อง`);
+    visibleMapLines.push(`… ${mapLines.length - visibleMapLines.length} more channels`);
   }
-  const mapText = visibleMapLines.join('\n') || 'ยังไม่ได้ตั้งค่า';
+  const mapText = visibleMapLines.join('\n') || 'Not configured';
   const alertsText = alerts?.channel_id
     ? `<#${alerts.channel_id}>\n${describeBnMode(alerts.bn_mode_filter || 'all')}`
-    : 'ยังไม่ได้ตั้งค่า';
+    : 'Not configured';
   return new EmbedBuilder()
     .setColor(updated ? 0x22c55e : 0x5865f2)
-    .setTitle(updated ? '✅ บันทึกการตั้งค่า Alren แล้ว' : '⚙️ การตั้งค่า Alren')
+    .setTitle(updated ? '✅ Alren settings saved' : '⚙️ Alren settings')
     .setDescription(updated
-      ? 'ระบบพร้อมใช้งานตามค่าด้านล่าง'
-      : 'ใส่เฉพาะตัวเลือกที่ต้องการเปลี่ยน แล้วเรียก `/setup` อีกครั้ง')
+      ? 'Your settings are shown below.'
+      : 'Run `/setup` with only the options you want to change.')
     .addFields(
       { name: '✅ Verify', value: verifyText, inline: true },
-      { name: '🎵 Beatmap feeds (แยกตามห้อง)', value: mapText, inline: false },
+      { name: '🎵 Beatmap feeds (per channel)', value: mapText, inline: false },
       { name: '🔔 BN alerts', value: alertsText, inline: true },
     )
-    .setFooter({ text: 'เฉพาะผู้มีสิทธิ์ Manage Server เท่านั้นที่ตั้งค่าได้' })
+    .setFooter({ text: 'Requires the Manage Server permission' })
     .setTimestamp();
 }
 
@@ -299,10 +290,9 @@ async function registerGuildSlashCommands({
 function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
   return async (interaction) => {
     if (interaction.isStringSelectMenu?.() && interaction.customId === 'alrenhelp:language') {
-      const language = interaction.values[0] === 'en' ? 'en' : 'th';
       await interaction.update({
-        embeds: [createHelpEmbed(language)],
-        components: createHelpComponents(language),
+        embeds: [createHelpEmbed()],
+        components: createHelpComponents(),
       });
       return;
     }
@@ -319,15 +309,15 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
 
     if (interaction.commandName === 'setup') {
       if (!interaction.inGuild()) {
-        await interaction.reply({ content: 'ใช้คำสั่งนี้ภายในเซิร์ฟเวอร์เท่านั้น', flags: MessageFlags.Ephemeral });
+        await interaction.reply({ content: 'This command can only be used in a server.', flags: MessageFlags.Ephemeral });
         return;
       }
       if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageGuild)) {
-        await interaction.reply({ content: 'ต้องมีสิทธิ์ Manage Server จึงจะตั้งค่าได้', flags: MessageFlags.Ephemeral });
+        await interaction.reply({ content: 'You need the Manage Server permission to change settings.', flags: MessageFlags.Ephemeral });
         return;
       }
       if (!store?.isConfigured) {
-        await interaction.reply({ content: 'ต้องตั้งค่าฐานข้อมูลก่อนใช้งาน `/setup`', flags: MessageFlags.Ephemeral });
+        await interaction.reply({ content: 'A configured database is required to use `/setup`.', flags: MessageFlags.Ephemeral });
         return;
       }
 
@@ -401,7 +391,7 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
         });
       } catch (error) {
         console.error('Quick setup failed:', error.message);
-        await interaction.editReply(`ตั้งค่าไม่สำเร็จ: ${error.message}`);
+        await interaction.editReply(`Could not save settings: ${error.message}`);
       }
       scheduleReplyDeletion(interaction);
       return;
@@ -593,10 +583,9 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
 
     if (['alrenhelp', 'help'].includes(interaction.commandName)) {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      const language = interaction.options.getString('language');
       await interaction.editReply({
-        embeds: [language ? createHelpEmbed(language) : createHelpLanguagePrompt()],
-        components: createHelpComponents(language),
+        embeds: [createHelpEmbed()],
+        components: createHelpComponents(),
       });
       scheduleReplyDeletion(interaction);
       return;

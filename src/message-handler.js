@@ -4,8 +4,6 @@ const {
   ButtonStyle,
   EmbedBuilder,
   PermissionsBitField,
-  StringSelectMenuBuilder,
-  StringSelectMenuOptionBuilder,
 } = require('discord.js');
 const { createMapEmbed } = require('./osu-maps');
 const { modeLabel } = require('./mode-icons');
@@ -38,73 +36,20 @@ function errorReason(error) {
   return reason.length > 1500 ? `${reason.slice(0, 1497)}...` : reason;
 }
 
-function normalizeHelpLanguage(language) {
-  return ['en', 'english'].includes(String(language || '').trim().toLowerCase()) ? 'en' : 'th';
-}
-
-function createHelpEmbed(language = 'th') {
-  const selected = normalizeHelpLanguage(language);
-  const embed = new EmbedBuilder().setColor(ALREN_COLOR);
-  if (selected === 'en') {
-    return embed
-      .setTitle('📖 Alren Command Guide — English')
-      .setURL(COMMANDS_URL)
-      .setDescription('Start with `/help`, `/verify`, `/map`, and `/setup`. Existing long-form and `!` commands remain available.')
-      .addFields(
-        { name: '💬 Private chat', value: '`/alren message:...` or `!alren ...`\n`/alrenclear` or `!alrenclear`' },
-        { name: '✅ osu! verification', value: '`/verify` — sign in with osu! OAuth automatically\n`/verify-status` or `!verify-status`' },
-        { name: '🎵 Beatmaps', value: '`/map` — random beatmap using this channel’s filters\n`/setup beatmap channel:#mania mode:mania status:ranked_loved` — Ranked + Loved feed per channel; repeat for Standard, Taiko or Catch\n`/setup beatmap enabled:false` — disable this channel’s feed\n`/setup status` — view all channel feeds' },
-        { name: '🛠️ Server setup', value: '`/setup status` — view all settings\n`/setup verify`, `/setup beatmap`, `/setup alerts`' },
-        { name: 'ℹ️ Utilities', value: '`/help language:English` or `!alrenhelp en`\n`/ping` or `!ping`' },
-        { name: '🌐 Full command guide', value: `[Open the web guide](${COMMANDS_URL})` },
-      )
-      .setFooter({ text: 'Slash replies are private • Use /help language:ไทย for Thai' });
-  }
-  return embed
-    .setTitle('📖 คู่มือคำสั่ง Alren — ภาษาไทย')
+function createHelpEmbed() {
+  return new EmbedBuilder().setColor(ALREN_COLOR)
+    .setTitle('📖 Alren Command Guide — English')
     .setURL(COMMANDS_URL)
-    .setDescription('เริ่มง่ายด้วย `/help`, `/verify`, `/map` และ `/setup` ส่วนคำสั่งแบบยาวกับคำสั่ง `!` ยังใช้ได้ทั้งหมด')
+    .setDescription('Start with `/help`, `/verify`, `/map`, and `/setup`. Existing long-form and `!` commands remain available.')
     .addFields(
-      { name: '💬 แชทส่วนตัว', value: '`/alren message:...` หรือ `!alren ...`\n`/alrenclear` หรือ `!alrenclear`' },
-      { name: '✅ ยืนยันบัญชี osu!', value: '`/verify` — กดปุ่ม OAuth แล้วระบบดึงบัญชีให้อัตโนมัติ\n`/verify-status` หรือ `!verify-status`' },
-      { name: '🎵 Beatmap', value: '`/map` — สุ่ม beatmap ตามโหมดของห้องนี้\n`/setup beatmap channel:#mania mode:mania status:ranked_loved` — รับ Ranked + Loved แยกห้อง ทำซ้ำสำหรับ Standard, Taiko และ Catch ได้\n`/setup beatmap enabled:false` — ปิด feed ห้องนี้\n`/setup status` — ดู feed ทุกห้อง' },
-      { name: '🛠️ ตั้งค่าเซิร์ฟเวอร์', value: '`/setup status` — ดูค่าทั้งหมด\n`/setup verify`, `/setup beatmap`, `/setup alerts`' },
-      { name: 'ℹ️ เครื่องมือ', value: '`/help language:ไทย` หรือ `!alrenhelp th`\n`/ping` หรือ `!ping`' },
-      { name: '🌐 คู่มือบนเว็บ', value: `[เปิดหน้า commands](${COMMANDS_URL})` },
+      { name: '💬 Private chat', value: '`/alren message:...` or `!alren ...`\n`/alrenclear` or `!alrenclear`' },
+      { name: '✅ osu! verification', value: '`/verify` — sign in with osu! OAuth automatically\n`/verify-status` or `!verify-status`' },
+      { name: '🎵 Beatmaps', value: '`/map` — random beatmap using this channel’s filters\n`/setup beatmap channel:#mania mode:mania status:ranked_loved` — Ranked + Loved feed per channel; repeat for Standard, Taiko or Catch\n`/setup beatmap enabled:false` — disable this channel’s feed\n`/setup status` — view all channel feeds' },
+      { name: '🛠️ Server setup', value: '`/setup status` — view all settings\n`/setup verify`, `/setup beatmap`, `/setup alerts`' },
+      { name: 'ℹ️ Utilities', value: '`/help` or `!alrenhelp`\n`/ping` or `!ping`' },
+      { name: '🌐 Full command guide', value: `[Open the web guide](${COMMANDS_URL})` },
     )
-    .setFooter({ text: 'คำตอบ Slash เป็นส่วนตัว • ใช้ /help language:English สำหรับภาษาอังกฤษ' });
-}
-
-function createHelpLanguagePrompt() {
-  return new EmbedBuilder()
-    .setColor(ALREN_COLOR)
-    .setTitle('🌐 เลือกภาษา / Choose a language')
-    .setURL(COMMANDS_URL)
-    .setDescription(`เลือกภาษาจากเมนูด้านล่างเพื่อเปิดคู่มือคำสั่ง Alren\nSelect a language below to open the Alren command guide.\n\nคู่มือบนเว็บ / Web guide: ${COMMANDS_URL}`)
-    .setFooter({ text: 'Alren Help Center • ศูนย์ช่วยเหลือ Alren' });
-}
-
-function createHelpLanguageMenu(language) {
-  const selected = language ? normalizeHelpLanguage(language) : null;
-  return new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId('alrenhelp:language')
-      .setPlaceholder('เลือกภาษา / Choose language')
-      .addOptions(
-        new StringSelectMenuOptionBuilder()
-          .setLabel('ภาษาไทย')
-          .setDescription('เปิดคู่มือคำสั่งภาษาไทย')
-          .setEmoji('🇹🇭')
-          .setValue('th')
-          .setDefault(selected === 'th'),
-        new StringSelectMenuOptionBuilder()
-          .setLabel('English')
-          .setDescription('Open the command guide in English')
-          .setEmoji('🇬🇧')
-          .setValue('en')
-          .setDefault(selected === 'en'),
-      ),
-  );
+    .setFooter({ text: 'Slash replies are private • Alren Help Center' });
 }
 
 function createCommandGuideButton() {
@@ -117,11 +62,8 @@ function createCommandGuideButton() {
   );
 }
 
-function createHelpComponents(language) {
-  return [
-    createHelpLanguageMenu(language),
-    createCommandGuideButton(),
-  ];
+function createHelpComponents() {
+  return [createCommandGuideButton()];
 }
 
 function formatHelp() {
@@ -186,10 +128,9 @@ function createMessageHandler({ bot, chat, osuMaps, osuVerification, store }) {
     const { command, args } = parsed;
 
     if (command === 'alrenhelp' || command === 'help') {
-      const language = args.trim() ? normalizeHelpLanguage(args) : null;
       await sendPrivate(message, {
-        embeds: [language ? createHelpEmbed(language) : createHelpLanguagePrompt()],
-        components: createHelpComponents(language),
+        embeds: [createHelpEmbed()],
+        components: createHelpComponents(),
       });
       return;
     }
@@ -340,10 +281,7 @@ module.exports = {
   createCommandGuideButton,
   createHelpEmbed,
   createHelpComponents,
-  createHelpLanguageMenu,
-  createHelpLanguagePrompt,
   createMessageHandler,
   createStatusEmbed,
   formatHelp,
-  normalizeHelpLanguage,
 };

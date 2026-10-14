@@ -53,6 +53,8 @@ test('registers global commands and removes legacy guild commands', async () => 
   assert.equal(calls[0].options.body.some((command) => command.name === 'verify-setting'), false);
   assert.equal(calls[0].options.body.some((command) => command.name === 'verify-role'), false);
   assert.equal(calls[0].options.body.some((command) => command.name === 'verify-role-status'), false);
+  assert.doesNotMatch(JSON.stringify(calls[0].options.body), /\p{Script=Thai}/u);
+  assert.deepEqual(calls[0].options.body.find((command) => command.name === 'help').options, []);
   const setupCommand = calls[0].options.body.find((command) => command.name === 'setup');
   assert.deepEqual(setupCommand.options.map((option) => option.name), ['status', 'verify', 'beatmap', 'alerts']);
   const beatmapOptions = setupCommand.options.find((option) => option.name === 'beatmap').options;
@@ -219,7 +221,8 @@ test('setup verify configures a selected verification role', async () => {
   assert.equal(configured.length, 1);
   assert.equal(configured[0][1].role, selectedRole);
   assert.equal(configured[0][1].channel, selectedChannel);
-  assert.match(reply.embeds[0].toJSON().title, /บันทึก/);
+  assert.match(reply.embeds[0].toJSON().title, /settings saved/);
+  assert.doesNotMatch(JSON.stringify(reply.embeds[0].toJSON()), /\p{Script=Thai}/u);
 });
 
 function setupInteraction({ channel = null, channelId = 'commands', enabled = null, mode = null, status = null, section = 'beatmap', canManage = true, inGuild = true } = {}) {
@@ -302,7 +305,7 @@ test('setup beatmap rejects DMs and members without Manage Server before changin
     const interaction = setupInteraction({ ...options, mode: 'mania', enabled: false });
     await handler(interaction);
     assert.equal(interaction.result.flags, MessageFlags.Ephemeral);
-    assert.match(interaction.result.content, /Manage Server|เซิร์ฟเวอร์เท่านั้น/);
+    assert.match(interaction.result.content, /Manage Server|only be used in a server/);
     assert.equal(interaction.deferred, undefined);
   }
   assert.deepEqual(await store.listMapSettings(), []);
@@ -462,12 +465,12 @@ test('osumap-status shows configured beatmap feed settings', async () => {
   assert.equal(reply.embeds[0].toJSON().fields[1].value, 'Ranked · All Mode');
 });
 
-test('help language dropdown updates the guide in place', async () => {
+test('legacy help language dropdown switches to the English guide and removes language controls', async () => {
   let update;
   const interaction = {
     customId: 'alrenhelp:language',
     isStringSelectMenu: () => true,
-    values: ['en'],
+    values: ['th'],
     async update(payload) { update = payload; },
   };
   const handler = createInteractionHandler({});
@@ -475,6 +478,7 @@ test('help language dropdown updates the guide in place', async () => {
   await handler(interaction);
 
   assert.match(update.embeds[0].toJSON().title, /English/);
-  assert.equal(update.components[0].toJSON().components[0].custom_id, 'alrenhelp:language');
-  assert.equal(update.components[1].toJSON().components[0].url, 'https://www.alrenbot.xyz/commands');
+  assert.equal(update.components.length, 1);
+  assert.equal(update.components[0].toJSON().components[0].url, 'https://www.alrenbot.xyz/commands');
+  assert.doesNotMatch(JSON.stringify(update), /\p{Script=Thai}/u);
 });
