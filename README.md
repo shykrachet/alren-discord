@@ -112,7 +112,7 @@ For existing deployments configured with the old minute intervals, set `OSU_MAP_
 | `/setup status` | Overview of server settings (verification, feed, alerts). |
 | `/setup verify <role> [channel]` | Configure verified role and public announcement channel. |
 | `/setup beatmap [channel] [status] [mode] [enabled]` | Set up automatic beatmap filters per channel, or disable that channel’s feed. Defaults to the current channel. |
-| `/setup alerts <channel> [bn_mode]` | Set up BN and Mappers' Guild alerts channel. |
+| `/setup bn-management [channel] [bn_mode]` | Set up BN and Mappers' Guild alerts channel. |
 | `/alren <message>` | Start a private conversational session with Alren. |
 | `/alrenclear` | Clear conversation memory in the current channel. |
 

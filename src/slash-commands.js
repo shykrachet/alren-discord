@@ -110,8 +110,8 @@ const SETUP_COMMAND = new SlashCommandBuilder()
       .setName('enabled')
       .setDescription('Enable or disable the feed in the selected channel.')))
   .addSubcommand((subcommand) => subcommand
-    .setName('alerts')
-    .setDescription('Configure BN and Mappers’ Guild alerts.')
+    .setName('bn-management')
+    .setDescription('Manage BN request notifications and Mappers’ Guild alerts.')
     .addChannelOption((option) => option
       .setName('channel')
       .setDescription('Channel for BN and Mappers’ Guild alerts.')
@@ -364,7 +364,7 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
           }
         }
 
-        if (section === 'alerts') {
+        if (section === 'bn-management') {
           const alertsChannel = interaction.options.getChannel('channel');
           const bnMode = interaction.options.getString('bn_mode');
           if (alertsChannel || bnMode) {
@@ -431,7 +431,7 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
         const channelId = selectedChannel?.id || current?.channel_id;
         const bnMode = selectedMode || current?.bn_mode_filter || 'all';
         if (!channelId) {
-          await interaction.editReply('Select a channel the first time, for example `/setup alerts channel:#alerts`.');
+          await interaction.editReply('Select a channel the first time, for example `/setup bn-management channel:#alerts`.');
         } else if (!selectedChannel && !selectedMode) {
           await interaction.editReply(`Community alerts are configured for <#${channelId}>. BN requests: **${describeBnMode(bnMode)}**. New Mappers’ Guild missions: **all missions**.`);
         } else {

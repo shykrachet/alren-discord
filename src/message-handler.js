@@ -45,7 +45,7 @@ function createHelpEmbed() {
       { name: '💬 Private chat', value: '`/alren message:...` or `!alren ...`\n`/alrenclear` or `!alrenclear`' },
       { name: '✅ osu! verification', value: '`/verify` — sign in with osu! OAuth automatically\n`/verify-status` or `!verify-status`' },
       { name: '🎵 Beatmaps', value: '`/map` — random beatmap using this channel’s filters\n`/setup beatmap channel:#mania mode:mania status:ranked_loved` — Ranked + Loved feed per channel; repeat for Standard, Taiko or Catch\n`/setup beatmap enabled:false` — disable this channel’s feed\n`/setup status` — view all channel feeds' },
-      { name: '🛠️ Server setup', value: '`/setup status` — view all settings\n`/setup verify`, `/setup beatmap`, `/setup alerts`' },
+      { name: '🛠️ Server setup', value: '`/setup status` — view all settings\n`/setup verify`, `/setup beatmap`, `/setup bn-management`' },
       { name: 'ℹ️ Utilities', value: '`/help` or `!alrenhelp`\n`/ping` or `!ping`' },
       { name: '🌐 Full command guide', value: `[Open the web guide](${COMMANDS_URL})` },
     )
@@ -73,7 +73,7 @@ function formatHelp() {
     '`/help` — easy slash-command menu',
     '`/verify` — one-click osu! OAuth verification',
     '`/map` — random beatmap with cover artwork',
-    '`/setup status|verify|beatmap|alerts` — configure server features',
+    '`/setup status|verify|beatmap|bn-management` — configure server features',
     '`/alren` or `!alren <message>` — private AI chat',
     '`/alrenclear` or `!alrenclear` — clear chat memory',
     '`!osuverify` — legacy prefix verify through osu! OAuth',

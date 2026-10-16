@@ -68,7 +68,7 @@ test('creates a rich BN request card with artwork and preferences', () => {
   assert.match(embed.fields.find((field) => field.name.includes('Languages')).value, /english, thai/);
 });
 
-test('creates a compact red BN closed card with identity, mode and profile links', () => {
+test('creates a compact red BN closed card with avatar, relative time and website link', () => {
   const [entry] = normalizeBnRequests(bnResponse('closed'));
   const embed = createBnClosedEmbed(entry).toJSON();
 
@@ -80,8 +80,11 @@ test('creates a compact red BN closed card with identity, mode and profile links
   assert.match(embed.description, /Mapper.*https:\/\/osu\.ppy\.sh\/users\/123/);
   assert.match(embed.description, /no longer accepting.*osu!/);
   assert.equal(embed.image, undefined);
-  assert.equal(embed.thumbnail, undefined);
+  assert.equal(embed.thumbnail.url, 'https://a.ppy.sh/123');
   assert.equal(embed.fields, undefined);
+  const closedTime = Math.floor(Date.parse(embed.timestamp) / 1000);
+  assert.ok(embed.description.includes(`Closed <t:${closedTime}:R>`));
+  assert.match(embed.description, /\[BN website ↗\]\(https:\/\/bn\.mappersguild\.com\/\?id=bn-id\)/);
 });
 
 test('normalizes only mission-open log events', () => {

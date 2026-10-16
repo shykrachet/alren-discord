@@ -154,21 +154,23 @@ function createBnStatusEmbed(entry, isOpen) {
   bnUrl.searchParams.set('id', entry.id);
   const roleName = BN_ROLE_NAMES[entry.group] || 'BN/NAT member';
   const level = entry.level ? ` • ${titleCase(entry.level)}` : '';
+  const openedAt = Date.parse(entry.lastOpenedAt || '');
+  const statusTime = isOpen && !Number.isNaN(openedAt) ? new Date(openedAt) : new Date();
   const embed = new EmbedBuilder()
     .setColor(isOpen ? 0x22c55e : 0xef4444)
     .setAuthor({
       name: `${entry.username} • ${roleName}${level}`,
       ...(entry.avatarUrl ? { iconURL: entry.avatarUrl } : {}),
     })
-    .setTitle(isOpen ? '🟢 Beatmap requests are open' : '🔴 Beatmap requests are closed')
+    .setTitle(isOpen ? '🟢 Beatmap requests are open' : '🔴 Closed')
     .setURL(bnUrl.toString())
     .setDescription(isOpen
       ? `**[${entry.username}](${profileUrl})** is accepting **${modeName}** requests now.`
-      : `**[${entry.username}](${profileUrl})** is no longer accepting **${modeName}** requests.`)
+      : `**[${entry.username}](${profileUrl})** is no longer accepting **${modeName}** BN requests.\n\n🕒 Closed ${relativeDiscordTime(statusTime.toISOString())}\n🔗 [BN website ↗](${bnUrl.toString()})`)
     .setFooter({ text: 'BN request data • bn.mappersguild.com' });
 
-  const openedAt = Date.parse(entry.lastOpenedAt || '');
-  embed.setTimestamp(isOpen && !Number.isNaN(openedAt) ? new Date(openedAt) : new Date());
+  embed.setTimestamp(statusTime);
+  if (entry.avatarUrl) embed.setThumbnail(entry.avatarUrl);
   if (!isOpen) return embed;
 
   const methods = entry.requestMethods
@@ -193,7 +195,6 @@ function createBnStatusEmbed(entry, isOpen) {
     embed.spliceFields(4, 0, { name: '📝 Request information', value: compactText(entry.requestInfo, 900) });
   }
   if (entry.coverUrl) embed.setImage(entry.coverUrl);
-  if (entry.avatarUrl) embed.setThumbnail(entry.avatarUrl);
   return embed;
 }
 

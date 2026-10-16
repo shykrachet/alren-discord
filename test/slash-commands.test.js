@@ -56,14 +56,14 @@ test('registers global commands and removes legacy guild commands', async () => 
   assert.doesNotMatch(JSON.stringify(calls[0].options.body), /\p{Script=Thai}/u);
   assert.deepEqual(calls[0].options.body.find((command) => command.name === 'help').options, []);
   const setupCommand = calls[0].options.body.find((command) => command.name === 'setup');
-  assert.deepEqual(setupCommand.options.map((option) => option.name), ['status', 'verify', 'beatmap', 'alerts']);
+  assert.deepEqual(setupCommand.options.map((option) => option.name), ['status', 'verify', 'beatmap', 'bn-management']);
   const beatmapOptions = setupCommand.options.find((option) => option.name === 'beatmap').options;
   assert.deepEqual(beatmapOptions.map((option) => option.name), ['channel', 'status', 'mode', 'enabled']);
   const modeChoices = beatmapOptions.find((option) => option.name === 'mode').choices;
   assert.deepEqual(modeChoices.map((choice) => choice.value), ['any', 'osu', 'taiko', 'catch', 'mania']);
   assert.equal(modeChoices[0].name, 'All Mode');
   assert.deepEqual(modeChoices.map((choice) => choice.name), ['All Mode', 'Standard (osu!)', 'osu!taiko', 'osu!catch / fruits', 'osu!mania']);
-  const bnChoices = setupCommand.options.find((option) => option.name === 'alerts').options.find((option) => option.name === 'bn_mode').choices;
+  const bnChoices = setupCommand.options.find((option) => option.name === 'bn-management').options.find((option) => option.name === 'bn_mode').choices;
   assert.equal(bnChoices[0].name, 'All Mode');
   assert.match(modeChoices.find((choice) => choice.value === 'osu').name, /Standard/);
   const statusChoice = { name: 'Ranked + Loved', value: 'ranked_loved' };
