@@ -2,27 +2,27 @@ const path = require('node:path');
 
 const MODE_DEFINITIONS = {
   osu: {
-    emojiName: 'alren_mode_osu',
+    emojiName: 'alren_mode_osu_v2',
     fallback: '🎯',
-    file: 'mode-osu-small@2x.png',
+    file: 'mode-osu-emoji.png',
     label: 'osu!',
   },
   taiko: {
-    emojiName: 'alren_mode_taiko',
+    emojiName: 'alren_mode_taiko_v2',
     fallback: '🥁',
-    file: 'mode-taiko-small@2x.png',
+    file: 'mode-taiko-emoji.png',
     label: 'osu!taiko',
   },
   catch: {
-    emojiName: 'alren_mode_fruits',
+    emojiName: 'alren_mode_fruits_v2',
     fallback: '🍎',
-    file: 'mode-fruits-small@2x.png',
+    file: 'mode-fruits-emoji.png',
     label: 'osu!catch',
   },
   mania: {
-    emojiName: 'alren_mode_mania',
+    emojiName: 'alren_mode_mania_v2',
     fallback: '🎹',
-    file: 'mode-mania-small@2x.png',
+    file: 'mode-mania-emoji.png',
     label: 'osu!mania',
   },
 };

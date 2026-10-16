@@ -19,14 +19,20 @@ test('normalizes fruits to catch and provides usable fallback icons', () => {
 
 test('syncs local mode assets as Discord application emojis', async () => {
   const created = [];
+  const existing = [
+    { id: '1', name: 'alren_mode_osu_v2' },
+    { id: 'legacy-taiko', name: 'alren_mode_taiko' },
+  ];
   const application = {
     emojis: {
       async fetch() {
-        return [{ id: '1', name: 'alren_mode_osu' }];
+        return existing;
       },
       async create(options) {
         created.push(options);
-        return { id: String(created.length + 1), name: options.name };
+        const emoji = { id: String(created.length + 1), name: options.name };
+        existing.push(emoji);
+        return emoji;
       },
     },
   };
@@ -37,9 +43,12 @@ test('syncs local mode assets as Discord application emojis', async () => {
   assert.equal(result.created, 3);
   assert.equal(created.length, 3);
   assert.deepEqual(created.map((item) => item.attachment.split('/').slice(-3).join('/')), [
-    'img/modes/mode-taiko-small@2x.png',
-    'img/modes/mode-fruits-small@2x.png',
-    'img/modes/mode-mania-small@2x.png',
+    'img/modes/mode-taiko-emoji.png',
+    'img/modes/mode-fruits-emoji.png',
+    'img/modes/mode-mania-emoji.png',
   ]);
-  assert.match(modeLabel('osu'), /^<:alren_mode_osu:1> osu!$/);
+  assert.match(modeLabel('osu'), /^<:alren_mode_osu_v2:1> osu!$/);
+  assert.equal(modeIcon('taiko'), '<:alren_mode_taiko_v2:2>');
+  assert.deepEqual(await syncApplicationModeEmojis(application), { ready: 4, created: 0 });
+  assert.equal(created.length, 3);
 });

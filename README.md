@@ -127,7 +127,7 @@ Configure multiple beatmap feeds in the same server by running the command once 
 
 `osu` is displayed as **Standard (osu!)** in the mode picker. Each channel keeps its own filters and posting history, so a set containing several modes can appear in each matching channel. Use `mode:any` (**All Mode**, without an icon) for all modes in one channel, and `status:all` for Ranked, Qualified, and Loved. Existing feed settings and history migrate automatically to their original channel.
 
-Mode icons in bot messages and embeds use the Discord application emojis uploaded from `img/modes` at startup. Slash-command choices display plain mode names because Discord does not support custom emoji in those choices.
+Mode icons in bot messages and embeds use the Discord application emojis uploaded from `img/modes` at startup. The `*-emoji.png` assets are centered 128×128 crops of the original icons, with consistent padding for inline text. They use `alren_mode_*_v2` names so restarting the bot uploads the resized set while preserving the old emojis for existing messages. Slash-command choices display plain mode names because Discord does not support custom emoji in those choices.
 
 For both **Ranked + Loved** in the same channel, choose `status:ranked_loved`:
 

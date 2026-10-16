@@ -286,9 +286,9 @@ test('setup beatmap adds separate mode channels, displays every feed, and disabl
   assert.match(mapField.value, /<#mania>.*Ranked \+ Loved.*mania/);
   assert.match(mapField.value, /<#standard>.*Ranked.*Standard/);
   assert.match(mapField.value, /<#taiko>.*Ranked.*taiko/);
-  assert.match(mapField.value, /<:alren_mode_mania:13>/);
-  assert.match(mapField.value, /<:alren_mode_osu:10>/);
-  assert.match(mapField.value, /<:alren_mode_taiko:11>/);
+  assert.match(mapField.value, /<:alren_mode_mania_v2:13>/);
+  assert.match(mapField.value, /<:alren_mode_osu_v2:10>/);
+  assert.match(mapField.value, /<:alren_mode_taiko_v2:11>/);
 
   const disable = setupInteraction({ channel: { id: 'mania' }, enabled: false });
   await handler(disable);
@@ -326,7 +326,7 @@ test('map passes the current channel to the service and preserves explicit overr
   await handler(interaction);
   assert.deepEqual(request, { channelId: 'mania', guildId: 'guild', mode: 'osu', status: 'qualified' });
   assert.equal(interaction.result.embeds[0].toJSON().url, 'https://osu.ppy.sh/beatmapsets/123');
-  assert.match(interaction.result.content, /<:alren_mode_osu:10>/);
+  assert.match(interaction.result.content, /<:alren_mode_osu_v2:10>/);
 });
 
 test('verify-setting saves the selected role and channel', async () => {
@@ -459,7 +459,7 @@ test('osumap-status shows configured beatmap feed settings', async () => {
   assert.match(embed.title, /beatmap feed settings/);
   assert.match(embed.fields[0].value, /<#beatmaps>/);
   assert.match(embed.fields[1].value, /Mania|mania|osu!mania/);
-  assert.match(embed.fields[1].value, /<:alren_mode_mania:13>/);
+  assert.match(embed.fields[1].value, /<:alren_mode_mania_v2:13>/);
   mode = 'any';
   await handler(interaction);
   assert.equal(reply.embeds[0].toJSON().fields[1].value, 'Ranked · All Mode');

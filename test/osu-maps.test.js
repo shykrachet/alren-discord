@@ -113,7 +113,7 @@ test('createMapEmbed uses synced img/modes application emoji icons', async () =>
         return [];
       },
       async create(options) {
-        return { id: options.name.endsWith('osu') ? '10' : '20', name: options.name };
+        return { id: options.name === 'alren_mode_osu_v2' ? '10' : '20', name: options.name };
       },
     },
   };
@@ -122,7 +122,7 @@ test('createMapEmbed uses synced img/modes application emoji icons', async () =>
   const embed = createMapEmbed(beatmapsetTemplate(123)).toJSON();
 
   assert.equal(embed.fields.find((field) => field.name.includes('Modes')).name, '🎮 Modes');
-  assert.equal(embed.fields.find((field) => field.name.includes('Modes')).value, '<:alren_mode_osu:10> osu!, <:alren_mode_mania:20> osu!mania');
+  assert.equal(embed.fields.find((field) => field.name.includes('Modes')).value, '<:alren_mode_osu_v2:10> osu!, <:alren_mode_mania_v2:20> osu!mania');
 });
 
 test('uses the requested Discord status icons', () => {
