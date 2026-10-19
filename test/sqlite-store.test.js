@@ -212,3 +212,26 @@ test('sqlite-store: verification request state tokens', async () => {
 
   store.close();
 });
+
+test('sqlite-store: server setup, linked accounts and feed history survive reopening', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alren-persistence-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const dbPath = path.join(dir, 'alren.sqlite');
+  let store = createSqliteStore({ dbPath });
+  try {
+    await store.saveVerificationSettings('guild', { channelId: 'welcome', roleId: 'verified' });
+    await store.saveMapSettings('guild', { channelId: 'maps', mode: 'mania', status: 'ranked_loved' });
+    await store.saveCommunityAlertSettings('guild', { channelId: 'alerts', bnMode: 'osu' });
+    await store.saveVerification({ guildId: 'guild', discordUserId: 'user', osuUser: { id: 123, username: 'mapper' } });
+    await store.markMapPosted('guild', 456, 'ranked', 'maps');
+    store.close();
+    store = createSqliteStore({ dbPath });
+    assert.deepEqual(await store.getVerificationSettings('guild'), { channel_id: 'welcome', role_id: 'verified' });
+    assert.equal((await store.getMapSettings('guild', 'maps')).status_filter, 'ranked_loved');
+    assert.deepEqual(await store.getCommunityAlertSettings('guild'), { channel_id: 'alerts', bn_mode_filter: 'osu' });
+    assert.equal((await store.getVerification('guild', 'user')).osu_user_id, '123');
+    assert.equal(await store.hasPostedMap('guild', 456, 'ranked', 'maps'), true);
+  } finally {
+    store.close();
+  }
+});

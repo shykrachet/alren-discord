@@ -14,5 +14,7 @@ module.exports = {
   OSU_REDIRECT_URI: process.env.OSU_REDIRECT_URI,
   // Railway supplies PORT at runtime; VERIFY_PORT remains useful for local development.
   VERIFY_PORT: Number(process.env.PORT || process.env.VERIFY_PORT || 3000),
-  SQLITE_PATH: process.env.SQLITE_PATH || path.join(__dirname, '../data/alren.sqlite'),
+  SQLITE_PATH: process.env.SQLITE_PATH || (process.env.RAILWAY_VOLUME_MOUNT_PATH
+    ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'alren.sqlite')
+    : path.join(__dirname, '../data/alren.sqlite')),
 };

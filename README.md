@@ -6,6 +6,23 @@ All bot interface text is in English, including commands, help, notifications, v
 
 ---
 
+## Contents
+
+- [Features](#features)
+- [Requirements](#requirements)
+- [Quick Start](#quick-start)
+- [Configuration Reference](#configuration-reference)
+  - [Feed timing and recovery](#feed-timing-and-recovery)
+- [Server Permissions](#server-permissions)
+- [Commands](#commands)
+  - [Slash Commands](#slash-commands)
+  - [Beatmap feed examples](#beatmap-feed-examples)
+  - [Legacy Prefix Commands](#legacy-prefix-commands)
+- [Community Alerts API](#community-alerts-api)
+- [Development](#development)
+
+---
+
 ## Features
 
 - **osu! Verification**: One-click OAuth verification, automatic server role assignment, profile synchronization, and welcome messages.
@@ -93,11 +110,30 @@ npm start
 | `OSU_MAP_FEED_INTERVAL_MINUTES` | Legacy beatmap interval, used when the seconds variable is absent. | `0.5` |
 | `COMMUNITY_ALERT_INTERVAL_MINUTES` | Legacy community interval, used when the seconds variable is absent. | `0.5` |
 
+### Feed timing and recovery
+
 The bot checks feeds immediately at startup, then every 30 seconds by default. BN alerts are sent when a request status changes, and beatmap feeds post new maps to each configured channel. These updates use polling; delivery follows the next successful check and depends on when the upstream APIs expose the change. The first BN check establishes a baseline to avoid flooding channels with existing statuses.
 
 For existing deployments configured with the old minute intervals, set `OSU_MAP_FEED_INTERVAL_SECONDS=30` and `COMMUNITY_ALERT_INTERVAL_SECONDS=30`, then restart the bot. Seconds settings take precedence. The community snapshot API disables browser/proxy caching and keeps a 30-second in-memory cache for direct requests; monitor checks always request fresh data.
 
 Community API timeouts, network errors, and temporary HTTP failures are retried once after one second. Each attempt has its own deadline; monitor checks do not overlap while a previous check is still running. Failed checks preserve the last successful alert baseline so recovery can detect status changes without repeating existing alerts. Repeated identical monitor errors are logged at most once every five minutes, with an immediate log when the error changes or the source recovers. If a deployment still times out, set `COMMUNITY_ALERT_REQUEST_TIMEOUT_MS=60000` and restart; final errors include the host/deadline or the underlying network error code to help diagnose an upstream or connectivity issue.
+
+---
+
+## Server Permissions
+
+When adding the bot to your Discord server via OAuth2 URL generator, ensure the following scopes and permissions are granted:
+
+- **Scopes**: `bot`, `applications.commands`
+- **Permissions**:
+  - View Channels
+  - Send Messages
+  - Read Message History
+  - Manage Roles *(Required for osu! verification role assignment)*
+  - Manage Nicknames *(Required for username synchronization)*
+  - Manage Messages
+
+> **Role Hierarchy Note**: The bot's role in **Server Settings → Roles** must be placed above the role assigned to verified members. Discord prevents bots from assigning or managing roles equal to or above their own.
 
 ---
 
@@ -118,6 +154,8 @@ Community API timeouts, network errors, and temporary HTTP failures are retried 
 | `/setup bn-management [channel] [bn_mode]` | Set up BN and Mappers' Guild alerts channel. |
 | `/alren <message>` | Start a private conversational session with Alren. |
 | `/alrenclear` | Clear conversation memory in the current channel. |
+
+### Beatmap feed examples
 
 Configure multiple beatmap feeds in the same server by running the command once per channel:
 
@@ -146,23 +184,6 @@ This watches Ranked and Loved separately and posts new maps from both statuses. 
 ### Legacy Prefix Commands
 
 Prefix commands using `!` (such as `!help`, `!alren <message>`, `!map`, and `!osuverify`) remain supported as fallbacks.
-
----
-
-## Server Permissions
-
-When adding the bot to your Discord server via OAuth2 URL generator, ensure the following scopes and permissions are granted:
-
-- **Scopes**: `bot`, `applications.commands`
-- **Permissions**:
-  - View Channels
-  - Send Messages
-  - Read Message History
-  - Manage Roles *(Required for osu! verification role assignment)*
-  - Manage Nicknames *(Required for username synchronization)*
-  - Manage Messages
-
-> **Role Hierarchy Note**: The bot's role in **Server Settings → Roles** must be placed above the role assigned to verified members. Discord prevents bots from assigning or managing roles equal to or above their own.
 
 ---
 
