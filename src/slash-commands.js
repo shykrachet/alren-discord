@@ -1,4 +1,5 @@
-const { setupAccess } = require('./setup-access');
+const { setupAccess, commandAccess } = require('./setup-access');
+const { ACCESS_COMMAND, RESET_COMMAND, createAdminHandler } = require('./admin-commands');
 const {
   ChannelType, EmbedBuilder, MessageFlags, REST, Routes, SlashCommandBuilder,
 } = require('discord.js');
@@ -116,6 +117,8 @@ const COMMANDS = [
   QUICK_VERIFY_COMMAND.toJSON(),
   QUICK_MAP_COMMAND.toJSON(),
   SETUP_COMMAND.toJSON(),
+  ACCESS_COMMAND.toJSON(),
+  RESET_COMMAND.toJSON(),
 ];
 const DEFAULT_DELETE_AFTER_SECONDS = 300;
 
@@ -245,19 +248,19 @@ async function registerSlashCommands({ client, token, rest: providedRest }) {
     { body: COMMANDS },
   );
 
-  // Older releases registered the same commands per guild. Remove those
-  // legacy copies so Discord does not keep serving stale guild overrides.
+  // Keep guild commands current as well: guild updates are available immediately,
+  // while clients may still hold an older global command definition.
   const guilds = [...client.guilds.cache.values()];
-  const cleanupResults = await Promise.allSettled(guilds.map((guild) => rest.put(
-    Routes.applicationGuildCommands(applicationId, guild.id),
-    { body: [] },
-  )));
-  const cleanupFailures = cleanupResults.filter((result) => result.status === 'rejected');
-  if (cleanupFailures.length) {
-    console.warn(`Could not clear legacy slash commands in ${cleanupFailures.length} server(s).`);
-  }
-
-  console.log(`registered ${COMMANDS.length} global slash command(s) for ${guilds.length} server(s)`);
+  const syncResults = await Promise.allSettled(guilds.map((guild) => registerGuildSlashCommands({
+    client, guild, rest,
+  })));
+  syncResults.forEach((result, index) => {
+    if (result.status === 'rejected') {
+      console.warn(`Could not sync slash commands for server ${guilds[index].id}:`, result.reason?.message || result.reason);
+    }
+  });
+  const synced = syncResults.filter((result) => result.status === 'fulfilled').length;
+  console.log(`registered ${COMMANDS.length} global slash command(s); synced ${synced}/${guilds.length} server(s)`);
 }
 
 async function registerGuildSlashCommands({
@@ -274,8 +277,12 @@ async function registerGuildSlashCommands({
 }
 
 function createInteractionHandler({ osuMaps, osuVerification, store }) {
+  const handleAdmin = createAdminHandler({ store });
   return async (interaction) => {
+    if (await handleAdmin(interaction)) return;
     if (interaction.isStringSelectMenu?.() && interaction.customId === 'alrenhelp:language') {
+      const denied = await commandAccess(interaction, store);
+      if (denied) { await interaction.reply({ content: denied, flags: MessageFlags.Ephemeral }); return; }
       await interaction.update({
         embeds: [createHelpEmbed()],
         components: createHelpComponents(),
@@ -283,14 +290,18 @@ function createInteractionHandler({ osuMaps, osuVerification, store }) {
       return;
     }
     if (!interaction.isChatInputCommand()) return;
+    if (!interaction.deferred) await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const accessDenied = await commandAccess(interaction, store);
+    if (accessDenied) { await interaction.editReply({ content: accessDenied }); return; }
+
 
     if (['alren', 'alrenclear'].includes(interaction.commandName)) {
-      await interaction.reply({ content: 'AI chat has been removed from Alren.', flags: MessageFlags.Ephemeral });
+      await interaction.editReply({ content: 'AI chat has been removed from Alren.' });
       return;
     }
 
     if (interaction.commandName === 'ping') {
-      await interaction.reply({
+      await interaction.editReply({
         content: `🏓 Pong — **${interaction.client.ws.ping}ms**`,
         flags: MessageFlags.Ephemeral,
       });
@@ -306,11 +317,11 @@ function createInteractionHandler({ osuMaps, osuVerification, store }) {
 
     if (interaction.commandName === 'setup') {
       if (!interaction.inGuild()) {
-        await interaction.reply({ content: 'This command can only be used in a server.', flags: MessageFlags.Ephemeral });
+        await interaction.editReply({ content: 'This command can only be used in a server.', flags: MessageFlags.Ephemeral });
         return;
       }
       if (!store?.isConfigured) {
-        await interaction.reply({ content: 'A configured database is required to use `/setup`.', flags: MessageFlags.Ephemeral });
+        await interaction.editReply({ content: 'A configured database is required to use `/setup`.', flags: MessageFlags.Ephemeral });
         return;
       }
 
@@ -392,7 +403,7 @@ function createInteractionHandler({ osuMaps, osuVerification, store }) {
 
     if (interaction.commandName === 'community-alert-settings') {
       if (!interaction.inGuild()) {
-        await interaction.reply({
+        await interaction.editReply({
           content: 'This command can only be used in a server.',
           flags: MessageFlags.Ephemeral,
         });
@@ -400,7 +411,7 @@ function createInteractionHandler({ osuMaps, osuVerification, store }) {
         return;
       }
       if (!store?.isConfigured) {
-        await interaction.reply({
+        await interaction.editReply({
           content: 'Community alerts need a configured database.',
           flags: MessageFlags.Ephemeral,
         });
@@ -433,7 +444,7 @@ function createInteractionHandler({ osuMaps, osuVerification, store }) {
 
     if (interaction.commandName === 'verify-setting') {
       if (!interaction.inGuild()) {
-        await interaction.reply({
+        await interaction.editReply({
           content: 'This command can only be used in a server.',
           flags: MessageFlags.Ephemeral,
         });
@@ -470,7 +481,7 @@ function createInteractionHandler({ osuMaps, osuVerification, store }) {
 
     if (interaction.commandName === 'osumap-settings') {
       if (!interaction.inGuild()) {
-        await interaction.reply({
+        await interaction.editReply({
           content: 'This command can only be used in a server.',
           flags: MessageFlags.Ephemeral,
         });
@@ -501,7 +512,7 @@ function createInteractionHandler({ osuMaps, osuVerification, store }) {
 
     if (interaction.commandName === 'osumap-status') {
       if (!interaction.inGuild()) {
-        await interaction.reply({
+        await interaction.editReply({
           content: 'This command can only be used in a server.',
           flags: MessageFlags.Ephemeral,
         });
@@ -523,7 +534,7 @@ function createInteractionHandler({ osuMaps, osuVerification, store }) {
 
     if (['osumap', 'map'].includes(interaction.commandName)) {
       if (!interaction.inGuild()) {
-        await interaction.reply({
+        await interaction.editReply({
           content: 'This command can only be used in a server.',
           flags: MessageFlags.Ephemeral,
         });

@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createSqliteStore } = require('../src/sqlite-store');
-const { resolveInviter, setupAccess, ACCESS_DENIED, ACCESS_UNKNOWN } = require('../src/setup-access');
+const { resolveInviter, setupAccess, ACCESS_DENIED, ACCESS_UNKNOWN, USE_DENIED, commandAccess } = require('../src/setup-access');
 const { createInteractionHandler } = require('../src/slash-commands');
 
 function guild(entries = []) {
@@ -37,6 +37,7 @@ test('all slash setup aliases deny administrators who did not invite Alren', asy
   const store = createSqliteStore({ dbPath: ':memory:' });
   t.after(() => store.close());
   await store.saveBotInviter('guild', 'inviter', '100000');
+  await store.grantBotAccess('guild', 'admin', 'inviter');
   const handler = createInteractionHandler({ store });
   for (const commandName of ['setup', 'verify-setting', 'verify-role', 'osumap-settings', 'community-alert-settings']) {
     let reply;
@@ -48,11 +49,17 @@ test('all slash setup aliases deny administrators who did not invite Alren', asy
   }
 });
 
-test('public commands remain usable without inviter access', async () => {
-  let reply;
-  await createInteractionHandler({})({ commandName: 'ping', client: { ws: { ping: 42 } },
-    isChatInputCommand: () => true, async reply(payload) { reply = payload; }, async deleteReply() {} });
-  assert.match(reply.content, /Pong/);
+test('everyday commands require a grant, which can be revoked', async (t) => {
+  const store = createSqliteStore({ dbPath: ':memory:' });
+  t.after(() => store.close());
+  await store.saveBotInviter('guild', 'inviter', '100000');
+  const context = { guild: guild(), user: { id: 'member' } };
+  assert.equal(await commandAccess(context, store), USE_DENIED);
+  await store.grantBotAccess('guild', 'member', 'inviter');
+  assert.equal(await commandAccess(context, store), null);
+  assert.equal(await setupAccess(context, store), ACCESS_DENIED);
+  await store.revokeBotAccess('guild', 'member');
+  assert.equal(await commandAccess(context, store), USE_DENIED);
 });
 
 test('inviter can use setup status without Manage Server', async (t) => {
@@ -72,6 +79,7 @@ test('legacy prefix setup cannot bypass inviter access', async (t) => {
   const store = createSqliteStore({ dbPath: ':memory:' });
   t.after(() => store.close());
   await store.saveBotInviter('guild', 'inviter', '100000');
+  await store.grantBotAccess('guild', 'admin', 'inviter');
   const handler = createMessageHandler({ bot: { user: { id: 'bot' } }, store });
   for (const command of ['verify-role', 'verify-setting', 'osumap-settings', 'community-alert-settings']) {
     let reply;

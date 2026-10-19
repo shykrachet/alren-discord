@@ -1,4 +1,4 @@
-const { setupAccess } = require('./setup-access');
+const { setupAccess, commandAccess } = require('./setup-access');
 const {
   ActionRowBuilder,
   ButtonBuilder,
@@ -40,16 +40,17 @@ function createHelpEmbed() {
   return new EmbedBuilder().setColor(ALREN_COLOR)
     .setTitle('📖 Alren Command Guide — English')
     .setURL(COMMANDS_URL)
-    .setDescription('Your osu! companion. Discover maps, verify your account, and follow community updates.\n\n**Everyone can use the everyday commands below.**')
+    .setDescription('Your osu! companion. Discover maps, verify your account, and follow community updates.\n\n**Access required** · Ask the server inviter to grant access before using Alren.')
     .addFields(
       { name: '✅ Verify your account', value: '`/verify` — link your osu! account\n`/verify-status` — view your linked profile', inline: true },
       { name: '🎵 Discover beatmaps', value: '`/map` — find a random beatmap\nFilter by status and game mode.', inline: true },
       { name: 'ℹ️ Quick tools', value: '`/ping` — check bot latency\n`/help` — open this guide', inline: false },
-      { name: '🔒 Setup · Inviter only', value: 'Only the person who invited Alren to this server can use `/setup` and legacy setup commands. Administrator and Manage Server permissions do not grant access.\n\n`/setup status` — review settings\n`/setup verify` — role and result channel\n`/setup beatmap` — feeds per channel\n`/setup bn-management` — community alerts' },
+      { name: '🔒 Server controls', value: 'Only the person who invited Alren can manage the server. Administrator and Manage Server permissions do not grant access.\n\n`/setup status` — review settings\n`/setup verify` — role and result channel\n`/setup beatmap` — feeds per channel\n`/setup bn-management` — community alerts' },
+      { name: '🔑 Access & reset', value: '`/access grant user:@member` — allow a member\n`/access revoke user:@member` — remove access\n`/access list` — review access\n`/reset` — reset settings with a confirmation step\nGranted members can use everyday commands; server controls remain restricted.' },
       { name: '📌 Feed example', value: '`/setup beatmap channel:#mania mode:mania status:ranked_loved`\nRepeat for each channel. Use `enabled:false` to stop a feed.' },
       { name: '🌐 Full command guide', value: `[Open the web guide](${COMMANDS_URL})` },
     )
-    .setFooter({ text: 'Everyone: everyday commands • Inviter: server setup' });
+    .setFooter({ text: 'Access required • Inviter: server controls' });
 }
 
 function createCommandGuideButton() {
@@ -68,7 +69,10 @@ function createHelpComponents() {
 
 function formatHelp() {
   return [
-    '**Alren commands**',
+    '**Alren commands · Access required**',
+    'Ask the server inviter for access before using Alren.',
+    '`/access grant|revoke|list` — inviter only: manage member access',
+    '`/reset` — inviter only: reset server settings after confirmation',
     `Full guide: ${COMMANDS_URL}`,
     '`/help` — easy slash-command menu',
     '`/verify` — one-click osu! OAuth verification',
@@ -116,6 +120,11 @@ function createMessageHandler({ bot, osuMaps, osuVerification, store }) {
     const parsed = parsePrefixCommand(message, bot);
     if (!parsed) return;
     const { command, args } = parsed;
+    const knownCommands = ['help', 'alrenhelp', 'ping', 'osuverify', 'osuverify-status', 'verify-status', 'verify-role', 'verify-setting', 'verify-role-status', 'osumap', 'osumap-status', 'osumap-settings', 'community-alert-settings'];
+    if (!knownCommands.includes(command)) return;
+    const accessDenied = await commandAccess(message, store);
+    if (accessDenied) { await message.reply(accessDenied); return; }
+
 
     if (['verify-role', 'verify-setting', 'osumap-settings', 'community-alert-settings'].includes(command)) {
       if (!message.inGuild()) { await message.reply('Use setup commands in a server.'); return; }

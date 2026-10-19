@@ -3,6 +3,15 @@ const path = require('node:path');
 const Database = require('better-sqlite3');
 
 const SCHEMA = `
+CREATE TABLE IF NOT EXISTS bot_access_grants (
+  guild_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  granted_by TEXT NOT NULL,
+  granted_at TEXT NOT NULL,
+  joined_at TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (guild_id, user_id)
+);
+
 CREATE TABLE IF NOT EXISTS bot_inviters (
   guild_id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
@@ -78,6 +87,9 @@ function createSqliteStore({ dbPath = path.join(__dirname, '../data/alren.sqlite
 
   // Initialize database schema
   db.exec(SCHEMA);
+  if (!db.pragma('table_info(bot_access_grants)').some((column) => column.name === 'joined_at')) {
+    db.exec("ALTER TABLE bot_access_grants ADD COLUMN joined_at TEXT NOT NULL DEFAULT ''");
+  }
 
   // Preserve the old server-wide feed and its watermark in its original channel.
   if (!db.pragma('table_info(osu_map_posts)').some((column) => column.name === 'channel_id')) {
@@ -320,9 +332,34 @@ function createSqliteStore({ dbPath = path.join(__dirname, '../data/alren.sqlite
     db.close();
   }
 
+  const saveBotInviterTx = db.transaction((guildId, userId, joinedAt) => {
+    const previous = db.prepare('SELECT joined_at FROM bot_inviters WHERE guild_id = ?').get(guildId);
+    if (previous && previous.joined_at !== joinedAt) {
+      db.prepare('DELETE FROM bot_access_grants WHERE guild_id = ?').run(guildId);
+    }
+    db.prepare('INSERT INTO bot_inviters (guild_id, user_id, joined_at) VALUES (?, ?, ?) ON CONFLICT(guild_id) DO UPDATE SET user_id = excluded.user_id, joined_at = excluded.joined_at').run(guildId, userId, joinedAt);
+  });
+
+  const resetGuildTx = db.transaction((guildId) => {
+    for (const table of ['osu_verification_settings', 'osu_verification_requests', 'osu_map_settings', 'osu_map_posts', 'community_alert_settings']) {
+      db.prepare(`DELETE FROM ${table} WHERE guild_id = ?`).run(guildId);
+    }
+  });
+
   return {
+    resetGuildSettings: async (guildId) => resetGuildTx(guildId),
+    grantBotAccess: async (guildId, userId, grantedBy, joinedAt) => {
+      const installation = joinedAt || db.prepare('SELECT joined_at FROM bot_inviters WHERE guild_id = ?').get(guildId)?.joined_at || '';
+      db.prepare('INSERT INTO bot_access_grants (guild_id, user_id, granted_by, granted_at, joined_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(guild_id, user_id) DO UPDATE SET granted_by = excluded.granted_by, granted_at = excluded.granted_at, joined_at = excluded.joined_at').run(guildId, userId, grantedBy, new Date().toISOString(), installation);
+    },
+    revokeBotAccess: async (guildId, userId) => db.prepare('DELETE FROM bot_access_grants WHERE guild_id = ? AND user_id = ?').run(guildId, userId).changes > 0,
+    hasBotAccess: async (guildId, userId, joinedAt) => {
+      const row = db.prepare('SELECT joined_at FROM bot_access_grants WHERE guild_id = ? AND user_id = ?').get(guildId, userId);
+      return Boolean(row && (joinedAt === undefined || row.joined_at === joinedAt));
+    },
+    listBotAccess: async (guildId) => db.prepare('SELECT user_id, granted_by, granted_at FROM bot_access_grants WHERE guild_id = ? ORDER BY user_id').all(guildId),
     getBotInviter: async (guildId) => db.prepare('SELECT user_id, joined_at FROM bot_inviters WHERE guild_id = ?').get(guildId) ?? null,
-    saveBotInviter: async (guildId, userId, joinedAt) => db.prepare('INSERT INTO bot_inviters (guild_id, user_id, joined_at) VALUES (?, ?, ?) ON CONFLICT(guild_id) DO UPDATE SET user_id = excluded.user_id, joined_at = excluded.joined_at').run(guildId, userId, joinedAt),
+    saveBotInviter: async (guildId, userId, joinedAt) => saveBotInviterTx(guildId, userId, joinedAt),
     close,
     consumeVerificationRequest,
     createVerificationRequest,

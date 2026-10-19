@@ -332,7 +332,7 @@ function createOsuMapService({
           const mapSummaries = await newFeedMaps(settings);
           for (const mapSummary of mapSummaries) {
             const map = await getBeatmapset(mapSummary);
-            await postMap({ map, settings });
+            if (await postMap({ map, settings }) === false) break;
             await store.markMapPosted(settings.guildId, mapSummary.id, mapSummary.status, settings.channelId);
           }
         } catch (error) {

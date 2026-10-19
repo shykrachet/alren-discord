@@ -16,15 +16,17 @@ function createInteractionHandler(deps) {
   store.getBotInviter = async (guildId) => (await originalGetInviter?.(guildId)) || { user_id: 'user', joined_at: '1000' };
   const handler = buildInteractionHandler({ ...deps, store });
   return async (interaction) => {
+    if (interaction.inGuild?.() === false) interaction.guildId = undefined;
     interaction.guild = { ...interaction.guild, id: interaction.guildId, members: { me: { joinedTimestamp: 1000 } } };
     interaction.user ||= { id: interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageGuild) ? 'user' : 'other' };
+    interaction.editReply ||= async (payload) => { interaction.result = payload; };
     const defer = interaction.deferReply?.bind(interaction);
     interaction.deferReply = async (payload) => { await defer?.(payload); interaction.deferred ||= payload; };
     return handler(interaction);
   };
 }
 
-test('registers global commands and removes legacy guild commands', async () => {
+test('registers matching global and guild commands without deleting guild definitions', async () => {
   const calls = [];
   const rest = {
     async put(route, options) {
@@ -53,6 +55,8 @@ test('registers global commands and removes legacy guild commands', async () => 
     'verify',
     'map',
     'setup',
+    'access',
+    'reset',
   ]);
   assert.equal(calls[0].options.body.some((command) => command.name === 'version'), false);
   assert.equal(calls[0].options.body.some((command) => command.name === 'alrenhelp'), false);
@@ -86,11 +90,11 @@ test('registers global commands and removes legacy guild commands', async () => 
   assert.deepEqual(calls.slice(1), [
     {
       route: '/applications/application-id/guilds/guild-one/commands',
-      options: { body: [] },
+      options: { body: calls[0].options.body },
     },
     {
       route: '/applications/application-id/guilds/guild-two/commands',
-      options: { body: [] },
+      options: { body: calls[0].options.body },
     },
   ]);
 });
@@ -316,7 +320,7 @@ test('setup beatmap rejects DMs and non-inviters before changing feeds', async (
   for (const options of [{ canManage: false }, { inGuild: false }]) {
     const interaction = setupInteraction({ ...options, mode: 'mania', enabled: false });
     await handler(interaction);
-    assert.match(interaction.result.content, /person who invited|only be used in a server/);
+    assert.match(interaction.result.content, /person who invited|only be used in a server|grant access|Use Alren in a server/);
   }
   assert.deepEqual(await store.listMapSettings(), []);
 });
@@ -448,6 +452,7 @@ test('osumap-status shows configured beatmap feed settings', async () => {
   const interaction = {
     channelId: 'channel',
     commandName: 'osumap-status',
+    user: { id: 'user' },
     guildId: 'guild',
     inGuild: () => true,
     isChatInputCommand: () => true,
@@ -479,6 +484,7 @@ test('legacy help language dropdown switches to the English guide and removes la
   let update;
   const interaction = {
     customId: 'alrenhelp:language',
+    guildId: 'guild', user: { id: 'user' },
     isStringSelectMenu: () => true,
     values: ['th'],
     async update(payload) { update = payload; },
@@ -491,4 +497,27 @@ test('legacy help language dropdown switches to the English guide and removes la
   assert.equal(update.components.length, 1);
   assert.equal(update.components[0].toJSON().components[0].url, 'https://www.alrenbot.xyz/commands');
   assert.doesNotMatch(JSON.stringify(update), /\p{Script=Thai}/u);
+});
+
+test('a failed guild sync does not prevent other servers receiving current commands', async () => {
+  const calls = [];
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.join(' '));
+  try {
+    await registerSlashCommands({
+      client: { application: { id: 'app' }, user: { id: 'bot' },
+        guilds: { cache: new Map([['failed', { id: 'failed' }], ['healthy', { id: 'healthy' }]]) } },
+      rest: { async put(route, payload) {
+        calls.push({ route, payload });
+        if (route.includes('/guilds/failed/')) throw new Error('Missing Access');
+      } },
+    });
+  } finally {
+    console.warn = originalWarn;
+  }
+  assert.equal(calls.length, 3);
+  assert.ok(calls.find((call) => call.route.includes('/guilds/healthy/')).payload.body.some((command) => command.name === 'setup'));
+  assert.ok(calls.every((call) => call.payload.body.length === 8));
+  assert.ok(warnings.some((warning) => warning.includes('failed') && warning.includes('Missing Access')));
 });

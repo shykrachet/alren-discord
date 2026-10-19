@@ -140,8 +140,13 @@ When adding the bot to your Discord server via OAuth2 URL generator, ensure the 
 
 ## Commands
 
-Everyday commands are available to everyone. Only the person who invited Alren
-can use `/setup` (including status) and legacy commands that change server settings.
+Members must receive access from the person who invited Alren before using
+commands, including `/help`, `/ping`, `/verify`, and `/map`. The inviter can use
+`/access grant user:@member`, `/access revoke user:@member`, and `/access list`.
+Access is scoped to this server and saved in SQLite. Granted members can use
+ordinary commands; they cannot grant access, configure the server, or reset it.
+Only the person who invited Alren can use `/setup` (including status), `/access`,
+`/reset`, and legacy commands that change server settings.
 Administrator and Manage Server permissions do not bypass this restriction.
 Alren records the inviter in SQLite using the bot-add audit record; give the bot
 **View Audit Log** permission. If the record is unavailable or expired, setup stays
@@ -161,6 +166,10 @@ for reference and are no longer used by the running bot.
 | `/verify [osu_id]` | Initiate osu! OAuth account verification. |
 | `/verify-status` | View linked osu! account details for the current server. |
 | `/map [status] [mode]` | Post a random beatmap matching given filters. |
+| `/access grant user:@member` | Allow a server member to use Alren. Inviter only. |
+| `/access revoke user:@member` | Remove a member's command access. Inviter only. |
+| `/access list` | View members granted access. Inviter only. |
+| `/reset` | Clear server settings after a 60-second confirmation. Keeps linked osu! accounts, access grants and inviter identity. Inviter only. |
 | `/setup status` | Overview of server settings (verification, feed, alerts). |
 | `/setup verify <role> [channel]` | Configure verified role and public announcement channel. |
 | `/setup beatmap [channel] [status] [mode] [enabled]` | Set up automatic beatmap filters per channel, or disable that channel’s feed. Defaults to the current channel. |

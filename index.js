@@ -44,15 +44,15 @@ bot.once('clientReady', async () => {
     resolveInviter(guild, verificationStore).catch((error) => console.warn(`Could not identify inviter for ${guild.id}:`, error.message));
   }
   try {
+    await registerSlashCommands({ client: bot, token: DISCORD_TOKEN });
+  } catch (error) {
+    console.error('Could not register slash commands:', error.message);
+  }
+  try {
     const modeIcons = await syncApplicationModeEmojis(bot.application);
     console.log(`mode icons ready: ${modeIcons.ready} (${modeIcons.created} created)`);
   } catch (error) {
     console.warn('Could not prepare application mode emojis; using Unicode fallbacks:', error.message);
-  }
-  try {
-    await registerSlashCommands({ client: bot, token: DISCORD_TOKEN });
-  } catch (error) {
-    console.error('Could not register slash commands:', error.message);
   }
   try {
     await osuVerification.startServer();
@@ -64,6 +64,8 @@ bot.once('clientReady', async () => {
     if (!channel?.isTextBased() || typeof channel.send !== 'function') {
       throw new Error(`Configured beatmap channel ${settings.channelId} is unavailable.`);
     }
+    const current = await verificationStore.getMapSettings(settings.guildId, settings.channelId);
+    if (!current || current.mode_filter !== settings.mode || current.status_filter !== settings.status) return false;
     await channel.send({
       content: '🆕 **New osu! beatmap**',
       embeds: [createMapEmbed(map)],
@@ -84,6 +86,8 @@ bot.once('clientReady', async () => {
             : alert.type === 'bn-closed'
               ? createBnClosedEmbed(alert.entry)
               : createMissionEmbed(alert.mission);
+          const current = await verificationStore.getCommunityAlertSettings(settings.guild_id);
+          if (!current || current.channel_id !== settings.channel_id || current.bn_mode_filter !== settings.bn_mode_filter) continue;
           await channel.send({ embeds: [embed] });
         } catch (error) {
           console.error(`Community alert delivery failed for server ${settings.guild_id}:`, error.message);

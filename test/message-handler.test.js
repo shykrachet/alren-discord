@@ -19,6 +19,7 @@ function message(content) {
     content,
     deletable: false,
     guildId: 'guild',
+    guild: { id: 'guild', members: { me: { joinedTimestamp: 1000 } } },
     inGuild: () => true,
     member: { displayName: 'Display Name' },
     replies,
@@ -38,7 +39,7 @@ function dependencies(overrides = {}) {
       async showStatus() {},
       async showVerificationRole() {},
     },
-    store: {},
+    store: { getBotInviter: async () => ({ user_id: 'user', joined_at: '1000' }) },
     ...overrides,
   };
 }

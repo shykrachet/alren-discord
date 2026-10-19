@@ -237,3 +237,28 @@ test('sqlite-store: server setup, linked accounts and feed history survive reope
     store.close();
   }
 });
+
+test('sqlite-store: access grants are isolated, persist on reopen and expire on a new installation', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alren-access-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const dbPath = path.join(dir, 'alren.sqlite');
+  let store = createSqliteStore({ dbPath });
+  try {
+    await store.saveBotInviter('guild', 'inviter', '1000');
+    await store.grantBotAccess('guild', 'member', 'inviter');
+    await store.grantBotAccess('other', 'member', 'other-inviter');
+    await store.grantBotAccess('guild', 'member', 'inviter');
+    assert.equal((await store.listBotAccess('guild')).length, 1);
+    store.close();
+    store = createSqliteStore({ dbPath });
+    assert.equal(await store.hasBotAccess('guild', 'member'), true);
+    assert.equal(await store.hasBotAccess('missing', 'member'), false);
+    await store.saveBotInviter('guild', 'inviter', '1000');
+    assert.equal(await store.hasBotAccess('guild', 'member'), true);
+    await store.saveBotInviter('guild', 'new-inviter', '2000');
+    assert.equal(await store.hasBotAccess('guild', 'member'), false);
+    assert.equal(await store.hasBotAccess('other', 'member'), true);
+    assert.equal(await store.revokeBotAccess('other', 'member'), true);
+    assert.equal(await store.revokeBotAccess('other', 'member'), false);
+  } finally { store.close(); }
+});
