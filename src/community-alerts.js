@@ -7,6 +7,19 @@ const BN_PAGE_URL = 'https://bn.mappersguild.com/';
 const MISSIONS_PAGE_URL = 'https://mappersguild.com/missions';
 const DEFAULT_INTERVAL_SECONDS = 30;
 const DEFAULT_CACHE_MS = DEFAULT_INTERVAL_SECONDS * 1000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const REQUEST_RETRY_DELAY_MS = 1000;
+const MONITOR_ERROR_LOG_INTERVAL_MS = 5 * 60_000;
+const RETRYABLE_HTTP_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+
+function requestErrorMessage(error, url, timeoutMs) {
+  if (['TimeoutError', 'AbortError'].includes(error?.name)) {
+    return `${new URL(url).hostname} timed out after ${timeoutMs} ms.`;
+  }
+  const message = error?.message || String(error);
+  const cause = error?.cause?.code || error?.code || error?.cause?.message;
+  return cause ? `${message} (${cause})` : message;
+}
 
 const MODE_NAMES = {
   all: '🌐 All modes',
@@ -220,7 +233,12 @@ function createCommunityAlertsService({
   cacheMs = DEFAULT_CACHE_MS,
   intervalSeconds = process.env.COMMUNITY_ALERT_INTERVAL_SECONDS,
   intervalMinutes = process.env.COMMUNITY_ALERT_INTERVAL_MINUTES,
+  requestTimeoutMs = process.env.COMMUNITY_ALERT_REQUEST_TIMEOUT_MS,
 } = {}) {
+  const requestedTimeoutMs = Number(requestTimeoutMs);
+  const timeoutMs = Number.isFinite(requestedTimeoutMs) && requestedTimeoutMs > 0
+    ? Math.min(Math.max(Math.floor(requestedTimeoutMs), 1000), 120_000)
+    : DEFAULT_REQUEST_TIMEOUT_MS;
   let bnStates;
   let missionLogIds;
   let monitorTimer;
@@ -228,18 +246,46 @@ function createCommunityAlertsService({
   let cachedSnapshot;
   let cacheExpiresAt = 0;
   let snapshotPromise;
+  const monitorErrors = new Map();
 
   async function fetchJson(url) {
     if (typeof fetchImpl !== 'function') throw new Error('This Node.js version does not provide fetch.');
-    const response = await fetchImpl(url, {
-      headers: {
-        accept: 'application/json',
-        'user-agent': 'Alren Discord Bot/0.1 (+https://github.com/shykrachet/alren-discord)',
-      },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!response.ok) throw new Error(`${new URL(url).hostname} returned HTTP ${response.status}.`);
-    return response.json();
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      // Use a new controller for each attempt and keep the deadline active while reading the body.
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(
+        new DOMException('The request timed out.', 'TimeoutError'),
+      ), timeoutMs);
+      let retryable = true;
+      try {
+        const response = await fetchImpl(url, {
+          headers: {
+            accept: 'application/json',
+            'user-agent': 'Alren Discord Bot/0.1 (+https://github.com/shykrachet/alren-discord)',
+          },
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          retryable = RETRYABLE_HTTP_STATUSES.has(response.status);
+          await response.body?.cancel();
+          throw new Error(`${new URL(url).hostname} returned HTTP ${response.status}.`);
+        }
+        // A JSON/schema error is not a transient transport failure.
+        retryable = false;
+        return await response.json();
+      } catch (error) {
+        const timedOut = controller.signal.aborted
+          || ['TimeoutError', 'AbortError'].includes(error?.name);
+        const transportFailure = error instanceof TypeError || error?.cause?.code || error?.code;
+        if (attempt === 2 || !(timedOut || retryable || transportFailure)) {
+          const reason = controller.signal.aborted ? controller.signal.reason : error;
+          throw new Error(`${requestErrorMessage(reason, url, timeoutMs)} (attempt ${attempt}/2)`, { cause: error });
+        }
+      } finally {
+        clearTimeout(timer);
+      }
+      await new Promise((resolve) => setTimeout(resolve, REQUEST_RETRY_DELAY_MS));
+    }
   }
 
   async function fetchBnRequests() {
@@ -332,8 +378,8 @@ function createCommunityAlertsService({
       monitorRunning = true;
       try {
         const snapshot = await checkNow(sendAlert);
-        if (snapshot.bnRequests.error) console.error('BN request monitor failed:', snapshot.bnRequests.error);
-        if (snapshot.missions.error) console.error('Mission monitor failed:', snapshot.missions.error);
+        reportMonitorStatus('BN request', snapshot.bnRequests.error);
+        reportMonitorStatus('Mission', snapshot.missions.error);
       } catch (error) {
         console.error('Community alert monitor failed:', error.message);
       } finally {
@@ -348,6 +394,20 @@ function createCommunityAlertsService({
       clearInterval(monitorTimer);
       monitorTimer = undefined;
     };
+  }
+
+  function reportMonitorStatus(name, error) {
+    const previous = monitorErrors.get(name);
+    if (!error) {
+      if (previous) console.log(`${name} monitor recovered.`);
+      monitorErrors.delete(name);
+      return;
+    }
+    const now = Date.now();
+    if (!previous || previous.error !== error || now - previous.loggedAt >= MONITOR_ERROR_LOG_INTERVAL_MS) {
+      console.error(`${name} monitor failed:`, error);
+      monitorErrors.set(name, { error, loggedAt: now });
+    }
   }
 
   async function handleApiRequest(request, response) {

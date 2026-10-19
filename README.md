@@ -89,12 +89,15 @@ npm start
 | `SQLITE_PATH` | File path for SQLite database. | `./data/alren.sqlite` |
 | `OSU_MAP_FEED_INTERVAL_SECONDS` | Polling interval for beatmap feed (30–3600 seconds). | `30` |
 | `COMMUNITY_ALERT_INTERVAL_SECONDS` | Polling interval for BN open/closed status and Mappers' Guild alerts (30–3600 seconds). | `30` |
+| `COMMUNITY_ALERT_REQUEST_TIMEOUT_MS` | Deadline per BN / Mappers' Guild API attempt, including the response body (1000–120000 ms). | `30000` |
 | `OSU_MAP_FEED_INTERVAL_MINUTES` | Legacy beatmap interval, used when the seconds variable is absent. | `0.5` |
 | `COMMUNITY_ALERT_INTERVAL_MINUTES` | Legacy community interval, used when the seconds variable is absent. | `0.5` |
 
 The bot checks feeds immediately at startup, then every 30 seconds by default. BN alerts are sent when a request status changes, and beatmap feeds post new maps to each configured channel. These updates use polling; delivery follows the next successful check and depends on when the upstream APIs expose the change. The first BN check establishes a baseline to avoid flooding channels with existing statuses.
 
 For existing deployments configured with the old minute intervals, set `OSU_MAP_FEED_INTERVAL_SECONDS=30` and `COMMUNITY_ALERT_INTERVAL_SECONDS=30`, then restart the bot. Seconds settings take precedence. The community snapshot API disables browser/proxy caching and keeps a 30-second in-memory cache for direct requests; monitor checks always request fresh data.
+
+Community API timeouts, network errors, and temporary HTTP failures are retried once after one second. Each attempt has its own deadline; monitor checks do not overlap while a previous check is still running. Failed checks preserve the last successful alert baseline so recovery can detect status changes without repeating existing alerts. Repeated identical monitor errors are logged at most once every five minutes, with an immediate log when the error changes or the source recovers. If a deployment still times out, set `COMMUNITY_ALERT_REQUEST_TIMEOUT_MS=60000` and restart; final errors include the host/deadline or the underlying network error code to help diagnose an upstream or connectivity issue.
 
 ---
 

@@ -264,3 +264,189 @@ test('API handler returns the normalized public snapshot', async () => {
   assert.equal(parsed.bnRequests.entries[0].status, 'open');
   assert.equal(parsed.missions.recentOpenings[0].name, 'Mission');
 });
+
+test('default deadline allows an upstream response taking longer than ten seconds', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const service = createCommunityAlertsService({
+    requestTimeoutMs: undefined,
+    fetchImpl: (url, { signal }) => new Promise((resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      setTimeout(() => resolve({
+        ok: true,
+        json: async () => (url.includes('bn.') ? bnResponse('open') : missionResponse([])),
+      }), 12_000);
+    }),
+  });
+  const pending = service.getSnapshot();
+  t.mock.timers.tick(12_000);
+  const snapshot = await pending;
+  assert.equal(snapshot.bnRequests.entries[0].status, 'open');
+  assert.equal(snapshot.bnRequests.error, undefined);
+  assert.equal(snapshot.missions.error, undefined);
+});
+
+test('timeout retries use a fresh signal and keep the snapshot request shared', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const signals = [];
+  const service = createCommunityAlertsService({
+    requestTimeoutMs: 1000,
+    fetchImpl: async (url, { signal }) => {
+      if (!url.includes('bn.')) return { ok: true, json: async () => missionResponse([]) };
+      signals.push(signal);
+      if (signals.length === 1) {
+        return new Promise((resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        });
+      }
+      return { ok: true, json: async () => bnResponse('open') };
+    },
+  });
+  const pending = service.getSnapshot();
+  const shared = service.getSnapshot({ force: true });
+  t.mock.timers.tick(1000);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(signals.length, 1, 'retry must wait rather than hammer the API');
+  t.mock.timers.tick(1000);
+  const snapshot = await pending;
+  assert.equal(await shared, snapshot);
+  assert.equal(snapshot.bnRequests.entries[0].status, 'open');
+  assert.equal(signals.length, 2);
+  assert.notEqual(signals[0], signals[1]);
+  assert.equal(signals[0].aborted, true);
+  assert.equal(signals[1].aborted, false);
+  t.mock.timers.tick(60_000);
+  assert.equal(signals[1].aborted, false, 'successful requests must clear their deadline');
+});
+
+test('body timeouts stop after two attempts and preserve alert baselines through recovery', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let phase = 'baseline';
+  let failedAttempts = 0;
+  const service = createCommunityAlertsService({
+    requestTimeoutMs: 1000,
+    fetchImpl: async (url, { signal }) => {
+      if (url.includes('bn.')) {
+        if (phase === 'failed') {
+          failedAttempts += 1;
+          return {
+            ok: true,
+            json: () => new Promise((resolve, reject) => {
+              signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+            }),
+          };
+        }
+        return { ok: true, json: async () => bnResponse(phase === 'baseline' ? 'closed' : 'open') };
+      }
+      return {
+        ok: true,
+        json: async () => missionResponse([
+          ...(phase === 'baseline' ? [] : [{ id: 'new', category: 'mission', action: '"New" opened' }]),
+          { id: 'old', category: 'mission', action: '"Old" opened' },
+        ]),
+      };
+    },
+  });
+  const alerts = [];
+  const send = (alert) => alerts.push(alert);
+  await service.checkNow(send);
+  phase = 'failed';
+  const pending = service.checkNow(send);
+  await new Promise((resolve) => setImmediate(resolve));
+  t.mock.timers.tick(1000);
+  await new Promise((resolve) => setImmediate(resolve));
+  t.mock.timers.tick(1000);
+  await new Promise((resolve) => setImmediate(resolve));
+  t.mock.timers.tick(1000);
+  const snapshot = await pending;
+  assert.equal(failedAttempts, 2);
+  assert.match(snapshot.bnRequests.error, /bn\.mappersguild\.com timed out after 1000 ms.*attempt 2\/2/);
+  assert.equal(snapshot.missions.error, undefined);
+  assert.deepEqual(alerts.map((alert) => alert.type), ['mission-open']);
+
+  phase = 'recovered';
+  await service.checkNow(send);
+  await service.checkNow(send);
+  assert.deepEqual(alerts.map((alert) => alert.type), ['mission-open', 'bn-open']);
+});
+
+test('retries transient HTTP and network failures but not permanent HTTP or invalid JSON', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  for (const failure of ['http', 'network', 'permanent', 'json']) {
+    let calls = 0;
+    let cancelled = 0;
+    const service = createCommunityAlertsService({
+      fetchImpl: async (url) => {
+        if (!url.includes('bn.')) return { ok: true, json: async () => missionResponse([]) };
+        calls += 1;
+        if (calls === 1) {
+          if (failure === 'network') {
+            throw new TypeError('fetch failed', { cause: { code: 'UND_ERR_CONNECT_TIMEOUT' } });
+          }
+          if (failure === 'json') {
+            return { ok: true, json: async () => { throw new SyntaxError('Invalid JSON'); } };
+          }
+          return {
+            ok: false,
+            status: failure === 'permanent' ? 403 : 503,
+            body: { cancel: async () => { cancelled += 1; } },
+          };
+        }
+        return { ok: true, json: async () => bnResponse('open') };
+      },
+    });
+    const pending = service.getSnapshot();
+    await new Promise((resolve) => setImmediate(resolve));
+    t.mock.timers.tick(1000);
+    const snapshot = await pending;
+    const transient = ['http', 'network'].includes(failure);
+    assert.equal(calls, transient ? 2 : 1, failure);
+    assert.equal(Boolean(snapshot.bnRequests.error), !transient, failure);
+    assert.equal(cancelled, ['http', 'permanent'].includes(failure) ? 1 : 0, failure);
+  }
+});
+
+test('exhausted network failures include the underlying connection error', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const service = createCommunityAlertsService({
+    fetchImpl: async () => {
+      throw new TypeError('fetch failed', { cause: { code: 'UND_ERR_CONNECT_TIMEOUT' } });
+    },
+  });
+  const pending = service.getSnapshot();
+  await new Promise((resolve) => setImmediate(resolve));
+  t.mock.timers.tick(1000);
+  const snapshot = await pending;
+  assert.match(snapshot.bnRequests.error, /UND_ERR_CONNECT_TIMEOUT.*attempt 2\/2/);
+  assert.match(snapshot.missions.error, /UND_ERR_CONNECT_TIMEOUT.*attempt 2\/2/);
+});
+
+test('monitor throttles repeated errors, reminds after five minutes, and reports recovery', async (t) => {
+  t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: 0 });
+  const errors = t.mock.method(console, 'error', () => {});
+  const logs = t.mock.method(console, 'log', () => {});
+  let failing = true;
+  const service = createCommunityAlertsService({
+    fetchImpl: async (url) => {
+      if (url.includes('bn.')) {
+        return failing
+          ? { ok: false, status: 403 }
+          : { ok: true, json: async () => bnResponse('closed') };
+      }
+      return { ok: true, json: async () => missionResponse([]) };
+    },
+  });
+  const stop = service.start(() => {});
+  t.after(stop);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(errors.mock.callCount(), 1);
+  t.mock.timers.tick(30_000);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(errors.mock.callCount(), 1);
+  t.mock.timers.tick(270_000);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(errors.mock.callCount(), 2);
+  failing = false;
+  t.mock.timers.tick(30_000);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(logs.mock.calls.map((call) => call.arguments), [['BN request monitor recovered.']]);
+});
