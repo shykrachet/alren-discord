@@ -3,6 +3,12 @@ const path = require('node:path');
 const Database = require('better-sqlite3');
 
 const SCHEMA = `
+CREATE TABLE IF NOT EXISTS bot_inviters (
+  guild_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  joined_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS osu_verifications (
   guild_id TEXT NOT NULL,
   discord_user_id TEXT NOT NULL,
@@ -315,6 +321,8 @@ function createSqliteStore({ dbPath = path.join(__dirname, '../data/alren.sqlite
   }
 
   return {
+    getBotInviter: async (guildId) => db.prepare('SELECT user_id, joined_at FROM bot_inviters WHERE guild_id = ?').get(guildId) ?? null,
+    saveBotInviter: async (guildId, userId, joinedAt) => db.prepare('INSERT INTO bot_inviters (guild_id, user_id, joined_at) VALUES (?, ?, ?) ON CONFLICT(guild_id) DO UPDATE SET user_id = excluded.user_id, joined_at = excluded.joined_at').run(guildId, userId, joinedAt),
     close,
     consumeVerificationRequest,
     createVerificationRequest,

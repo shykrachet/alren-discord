@@ -219,6 +219,7 @@ test('sqlite-store: server setup, linked accounts and feed history survive reope
   const dbPath = path.join(dir, 'alren.sqlite');
   let store = createSqliteStore({ dbPath });
   try {
+    await store.saveBotInviter('guild', 'inviter', '100000');
     await store.saveVerificationSettings('guild', { channelId: 'welcome', roleId: 'verified' });
     await store.saveMapSettings('guild', { channelId: 'maps', mode: 'mania', status: 'ranked_loved' });
     await store.saveCommunityAlertSettings('guild', { channelId: 'alerts', bnMode: 'osu' });
@@ -226,6 +227,7 @@ test('sqlite-store: server setup, linked accounts and feed history survive reope
     await store.markMapPosted('guild', 456, 'ranked', 'maps');
     store.close();
     store = createSqliteStore({ dbPath });
+    assert.deepEqual(await store.getBotInviter('guild'), { user_id: 'inviter', joined_at: '100000' });
     assert.deepEqual(await store.getVerificationSettings('guild'), { channel_id: 'welcome', role_id: 'verified' });
     assert.equal((await store.getMapSettings('guild', 'maps')).status_filter, 'ranked_loved');
     assert.deepEqual(await store.getCommunityAlertSettings('guild'), { channel_id: 'alerts', bn_mode_filter: 'osu' });

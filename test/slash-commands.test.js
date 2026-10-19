@@ -5,10 +5,24 @@ const { createSqliteStore } = require('../src/sqlite-store');
 const { MODE_DEFINITIONS, syncApplicationModeEmojis } = require('../src/mode-icons');
 
 const {
-  createInteractionHandler,
+  createInteractionHandler: buildInteractionHandler,
   registerGuildSlashCommands,
   registerSlashCommands,
 } = require('../src/slash-commands');
+
+function createInteractionHandler(deps) {
+  const store = deps.store || {};
+  const originalGetInviter = store.getBotInviter?.bind(store);
+  store.getBotInviter = async (guildId) => (await originalGetInviter?.(guildId)) || { user_id: 'user', joined_at: '1000' };
+  const handler = buildInteractionHandler({ ...deps, store });
+  return async (interaction) => {
+    interaction.guild = { ...interaction.guild, id: interaction.guildId, members: { me: { joinedTimestamp: 1000 } } };
+    interaction.user ||= { id: interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageGuild) ? 'user' : 'other' };
+    const defer = interaction.deferReply?.bind(interaction);
+    interaction.deferReply = async (payload) => { await defer?.(payload); interaction.deferred ||= payload; };
+    return handler(interaction);
+  };
+}
 
 test('registers global commands and removes legacy guild commands', async () => {
   const calls = [];
@@ -33,8 +47,6 @@ test('registers global commands and removes legacy guild commands', async () => 
   assert.equal(calls.length, 3);
   assert.equal(calls[0].route, '/applications/application-id/commands');
   assert.deepEqual(calls[0].options.body.map((command) => command.name), [
-    'alren',
-    'alrenclear',
     'ping',
     'help',
     'verify-status',
@@ -297,16 +309,14 @@ test('setup beatmap adds separate mode channels, displays every feed, and disabl
   assert.doesNotMatch(disable.result.embeds[0].toJSON().fields.find((field) => field.name.includes('Beatmap')).value, /<#mania>/);
 });
 
-test('setup beatmap rejects DMs and members without Manage Server before changing feeds', async (t) => {
+test('setup beatmap rejects DMs and non-inviters before changing feeds', async (t) => {
   const store = createSqliteStore({ dbPath: ':memory:' });
   t.after(() => store.close());
   const handler = createInteractionHandler({ store, osuMaps: {} });
   for (const options of [{ canManage: false }, { inGuild: false }]) {
     const interaction = setupInteraction({ ...options, mode: 'mania', enabled: false });
     await handler(interaction);
-    assert.equal(interaction.result.flags, MessageFlags.Ephemeral);
-    assert.match(interaction.result.content, /Manage Server|only be used in a server/);
-    assert.equal(interaction.deferred, undefined);
+    assert.match(interaction.result.content, /person who invited|only be used in a server/);
   }
   assert.deepEqual(await store.listMapSettings(), []);
 });

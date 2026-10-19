@@ -1,9 +1,9 @@
+const { setupAccess } = require('./setup-access');
 const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
-  PermissionsBitField,
 } = require('discord.js');
 const { createMapEmbed } = require('./osu-maps');
 const { modeLabel } = require('./mode-icons');
@@ -40,16 +40,16 @@ function createHelpEmbed() {
   return new EmbedBuilder().setColor(ALREN_COLOR)
     .setTitle('📖 Alren Command Guide — English')
     .setURL(COMMANDS_URL)
-    .setDescription('Start with `/help`, `/verify`, `/map`, and `/setup`. Existing long-form and `!` commands remain available.')
+    .setDescription('Your osu! companion. Discover maps, verify your account, and follow community updates.\n\n**Everyone can use the everyday commands below.**')
     .addFields(
-      { name: '💬 Private chat', value: '`/alren message:...` or `!alren ...`\n`/alrenclear` or `!alrenclear`' },
-      { name: '✅ osu! verification', value: '`/verify` — sign in with osu! OAuth automatically\n`/verify-status` or `!verify-status`' },
-      { name: '🎵 Beatmaps', value: '`/map` — random beatmap using this channel’s filters\n`/setup beatmap channel:#mania mode:mania status:ranked_loved` — Ranked + Loved feed per channel; repeat for Standard, Taiko or Catch\n`/setup beatmap enabled:false` — disable this channel’s feed\n`/setup status` — view all channel feeds' },
-      { name: '🛠️ Server setup', value: '`/setup status` — view all settings\n`/setup verify`, `/setup beatmap`, `/setup bn-management`' },
-      { name: 'ℹ️ Utilities', value: '`/help` or `!alrenhelp`\n`/ping` or `!ping`' },
+      { name: '✅ Verify your account', value: '`/verify` — link your osu! account\n`/verify-status` — view your linked profile', inline: true },
+      { name: '🎵 Discover beatmaps', value: '`/map` — find a random beatmap\nFilter by status and game mode.', inline: true },
+      { name: 'ℹ️ Quick tools', value: '`/ping` — check bot latency\n`/help` — open this guide', inline: false },
+      { name: '🔒 Setup · Inviter only', value: 'Only the person who invited Alren to this server can use `/setup` and legacy setup commands. Administrator and Manage Server permissions do not grant access.\n\n`/setup status` — review settings\n`/setup verify` — role and result channel\n`/setup beatmap` — feeds per channel\n`/setup bn-management` — community alerts' },
+      { name: '📌 Feed example', value: '`/setup beatmap channel:#mania mode:mania status:ranked_loved`\nRepeat for each channel. Use `enabled:false` to stop a feed.' },
       { name: '🌐 Full command guide', value: `[Open the web guide](${COMMANDS_URL})` },
     )
-    .setFooter({ text: 'Slash replies are private • Alren Help Center' });
+    .setFooter({ text: 'Everyone: everyday commands • Inviter: server setup' });
 }
 
 function createCommandGuideButton() {
@@ -73,9 +73,7 @@ function formatHelp() {
     '`/help` — easy slash-command menu',
     '`/verify` — one-click osu! OAuth verification',
     '`/map` — random beatmap with cover artwork',
-    '`/setup status|verify|beatmap|bn-management` — configure server features',
-    '`/alren` or `!alren <message>` — private AI chat',
-    '`/alrenclear` or `!alrenclear` — clear chat memory',
+    '`/setup status|verify|beatmap|bn-management` — inviter only: configure server features',
     '`!osuverify` — legacy prefix verify through osu! OAuth',
     '`/verify-status` or `!verify-status` — verification status',
     '`!verify-setting @role` — legacy prefix verification setup',
@@ -107,25 +105,23 @@ async function sendPrivate(message, payload, acknowledgement = '📩 I sent the 
 
 function parsePrefixCommand(message, bot) {
   const content = message.content.trim();
-  const mentionPattern = new RegExp(`^<@!?${bot.user.id}>\\s*`, 'i');
-  if (mentionPattern.test(content)) {
-    return { command: 'alren', args: content.replace(mentionPattern, '').trim() };
-  }
   if (!content.startsWith('!')) return null;
   const match = /^!([^\s]+)\s*(.*)$/s.exec(content);
   return match ? { command: match[1].toLowerCase(), args: match[2].trim() } : null;
 }
 
-function hasManageServer(message) {
-  return Boolean(message.member?.permissions?.has(PermissionsBitField.Flags.ManageGuild));
-}
-
-function createMessageHandler({ bot, chat, osuMaps, osuVerification, store }) {
+function createMessageHandler({ bot, osuMaps, osuVerification, store }) {
   return async (message) => {
     if (message.author.bot) return;
     const parsed = parsePrefixCommand(message, bot);
     if (!parsed) return;
     const { command, args } = parsed;
+
+    if (['verify-role', 'verify-setting', 'osumap-settings', 'community-alert-settings'].includes(command)) {
+      if (!message.inGuild()) { await message.reply('Use setup commands in a server.'); return; }
+      const denied = await setupAccess(message, store);
+      if (denied) { await message.reply(denied); return; }
+    }
 
     if (command === 'alrenhelp' || command === 'help') {
       await sendPrivate(message, {
@@ -137,39 +133,6 @@ function createMessageHandler({ bot, chat, osuMaps, osuVerification, store }) {
 
     if (command === 'ping') {
       await message.reply({ embeds: [createStatusEmbed('🏓 Pong', `Latency: **${bot.ws.ping}ms**`, SUCCESS_COLOR)] });
-      return;
-    }
-
-    if (command === 'alren' || command === 'chat') {
-      if (!args) {
-        await message.reply('Usage: `!alren <message>`');
-        return;
-      }
-      if (!chat) {
-        await message.reply('AI chat is not configured yet.');
-        return;
-      }
-      if (message.deletable) await message.delete().catch(() => {});
-      try {
-        const answer = await chat.reply({
-          channelId: message.channelId,
-          userId: message.author.id,
-          displayName: message.member?.displayName || message.author.username,
-          prompt: args,
-        });
-        await sendPrivate(message, { embeds: [createAlrenEmbed(answer)] }, null);
-      } catch (error) {
-        console.error('Prefix chat request failed:', error.message);
-        await sendPrivate(message, { embeds: [createStatusEmbed('Chat unavailable', `Reason: ${errorReason(error)}`, ERROR_COLOR)] }, null);
-      }
-      return;
-    }
-
-    if (command === 'alrenclear' || command === 'reset') {
-      chat?.clearMemory(message.channelId, message.author.id);
-      await sendPrivate(message, {
-        embeds: [createStatusEmbed('✨ Fresh conversation', 'Your private Alren chat memory in this channel was cleared.', SUCCESS_COLOR)],
-      });
       return;
     }
 
@@ -227,10 +190,6 @@ function createMessageHandler({ bot, chat, osuMaps, osuVerification, store }) {
     }
 
     if (command === 'osumap-settings') {
-      if (!message.inGuild() || !hasManageServer(message)) {
-        await message.reply('You need the Manage Server permission to change beatmap settings.');
-        return;
-      }
       const values = args.toLowerCase().split(/\s+/).filter(Boolean);
       const status = values.find((value) => ['ranked', 'qualified', 'loved', 'ranked_loved', 'all'].includes(value));
       const mode = values.find((value) => ['any', 'osu', 'taiko', 'catch', 'mania'].includes(value));
@@ -246,10 +205,6 @@ function createMessageHandler({ bot, chat, osuMaps, osuVerification, store }) {
     }
 
     if (command === 'community-alert-settings') {
-      if (!message.inGuild() || !hasManageServer(message)) {
-        await message.reply('You need the Manage Server permission to change community alerts.');
-        return;
-      }
       if (!store?.isConfigured) {
         await message.reply('Community alerts need a configured database.');
         return;

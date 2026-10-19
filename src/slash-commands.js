@@ -1,8 +1,8 @@
+const { setupAccess } = require('./setup-access');
 const {
-  ChannelType, EmbedBuilder, MessageFlags, PermissionsBitField, REST, Routes, SlashCommandBuilder,
+  ChannelType, EmbedBuilder, MessageFlags, REST, Routes, SlashCommandBuilder,
 } = require('discord.js');
 const {
-  createAlrenEmbed,
   createHelpEmbed,
   createHelpComponents,
 } = require('./message-handler');
@@ -30,18 +30,6 @@ const BN_MODE_CHOICES = [
   { name: 'Catch / fruits', value: 'catch' },
   { name: 'Mania', value: 'mania' },
 ];
-
-const CHAT_COMMAND = new SlashCommandBuilder()
-  .setName('alren')
-  .setDescription('Chat privately with Alren. Replies delete automatically.')
-  .addStringOption((option) => option
-    .setName('message')
-    .setDescription('What you want to say to Alren')
-    .setRequired(true));
-
-const CLEAR_CHAT_COMMAND = new SlashCommandBuilder()
-  .setName('alrenclear')
-  .setDescription('Clear your private Alren chat memory in this channel.');
 
 const PING_COMMAND = new SlashCommandBuilder()
   .setName('ping')
@@ -77,7 +65,7 @@ const QUICK_MAP_COMMAND = new SlashCommandBuilder()
 
 const SETUP_COMMAND = new SlashCommandBuilder()
   .setName('setup')
-  .setDescription('Configure verification, beatmap feeds and BN alerts. Requires Manage Server.')
+  .setDescription('Configure verification, beatmap feeds and BN alerts. Inviter only.')
   .addSubcommand((subcommand) => subcommand
     .setName('status')
     .setDescription('View all Alren settings for this server.'))
@@ -122,8 +110,6 @@ const SETUP_COMMAND = new SlashCommandBuilder()
       .addChoices(...BN_MODE_CHOICES)));
 
 const COMMANDS = [
-  CHAT_COMMAND.toJSON(),
-  CLEAR_CHAT_COMMAND.toJSON(),
   PING_COMMAND.toJSON(),
   QUICK_HELP_COMMAND.toJSON(),
   VERIFY_STATUS_COMMAND.toJSON(),
@@ -234,7 +220,7 @@ function createSetupEmbed({
       { name: '🎵 Beatmap feeds (per channel)', value: mapText, inline: false },
       { name: '🔔 BN alerts', value: alertsText, inline: true },
     )
-    .setFooter({ text: 'Requires the Manage Server permission' })
+    .setFooter({ text: 'Only the person who invited Alren can use setup' })
     .setTimestamp();
 }
 
@@ -287,7 +273,7 @@ async function registerGuildSlashCommands({
   console.log(`registered ${COMMANDS.length} slash command(s) for ${guild.name || guild.id}`);
 }
 
-function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
+function createInteractionHandler({ osuMaps, osuVerification, store }) {
   return async (interaction) => {
     if (interaction.isStringSelectMenu?.() && interaction.customId === 'alrenhelp:language') {
       await interaction.update({
@@ -298,6 +284,11 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
     }
     if (!interaction.isChatInputCommand()) return;
 
+    if (['alren', 'alrenclear'].includes(interaction.commandName)) {
+      await interaction.reply({ content: 'AI chat has been removed from Alren.', flags: MessageFlags.Ephemeral });
+      return;
+    }
+
     if (interaction.commandName === 'ping') {
       await interaction.reply({
         content: `🏓 Pong — **${interaction.client.ws.ping}ms**`,
@@ -307,13 +298,15 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
       return;
     }
 
+    if (['setup', 'community-alert-settings', 'verify-setting', 'verify-role', 'osumap-settings'].includes(interaction.commandName) && interaction.inGuild()) {
+      if (!interaction.deferred) await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const denied = await setupAccess(interaction, store);
+      if (denied) { await interaction.editReply({ content: denied }); return; }
+    }
+
     if (interaction.commandName === 'setup') {
       if (!interaction.inGuild()) {
         await interaction.reply({ content: 'This command can only be used in a server.', flags: MessageFlags.Ephemeral });
-        return;
-      }
-      if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageGuild)) {
-        await interaction.reply({ content: 'You need the Manage Server permission to change settings.', flags: MessageFlags.Ephemeral });
         return;
       }
       if (!store?.isConfigured) {
@@ -321,7 +314,7 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
         return;
       }
 
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (!interaction.deferred) await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       try {
         const section = interaction.options.getSubcommand(false) || 'status';
         let updated = false;
@@ -406,14 +399,6 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
         scheduleReplyDeletion(interaction);
         return;
       }
-      if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageGuild)) {
-        await interaction.reply({
-          content: 'You need the Manage Server permission to change community alert settings.',
-          flags: MessageFlags.Ephemeral,
-        });
-        scheduleReplyDeletion(interaction);
-        return;
-      }
       if (!store?.isConfigured) {
         await interaction.reply({
           content: 'Community alerts need a configured database.',
@@ -423,7 +408,7 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
         return;
       }
 
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (!interaction.deferred) await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       try {
         const current = await store.getCommunityAlertSettings(interaction.guildId);
         const selectedChannel = interaction.options.getChannel('channel');
@@ -455,16 +440,8 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
         scheduleReplyDeletion(interaction);
         return;
       }
-      if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageGuild)) {
-        await interaction.reply({
-          content: 'You need the Manage Server permission to change verification settings.',
-          flags: MessageFlags.Ephemeral,
-        });
-        scheduleReplyDeletion(interaction);
-        return;
-      }
 
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (!interaction.deferred) await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const context = createPrivateCommandContext(interaction);
       try {
         const role = interaction.options.getRole('role');
@@ -500,16 +477,8 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
         scheduleReplyDeletion(interaction);
         return;
       }
-      if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageGuild)) {
-        await interaction.reply({
-          content: 'You need the Manage Server permission to change beatmap feed settings.',
-          flags: MessageFlags.Ephemeral,
-        });
-        scheduleReplyDeletion(interaction);
-        return;
-      }
 
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (!interaction.deferred) await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       try {
         const selectedChannel = interaction.options.getChannel('channel');
         const status = interaction.options.getString('status') ?? undefined;
@@ -540,7 +509,7 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
         return;
       }
 
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (!interaction.deferred) await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       try {
         const map = await store.getMapSettings(interaction.guildId, interaction.channelId);
         await interaction.editReply({ embeds: [createMapStatusEmbed(map)] });
@@ -582,7 +551,7 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
     }
 
     if (['alrenhelp', 'help'].includes(interaction.commandName)) {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (!interaction.deferred) await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       await interaction.editReply({
         embeds: [createHelpEmbed()],
         components: createHelpComponents(),
@@ -591,16 +560,8 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
       return;
     }
 
-    if (interaction.commandName === 'alrenclear') {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      chat?.clearMemory(interaction.channelId, interaction.user.id);
-      await interaction.editReply('Your private Alren chat memory in this channel has been cleared.');
-      scheduleReplyDeletion(interaction);
-      return;
-    }
-
     if (['osuverify', 'verify', 'osuverify-status', 'verify-status'].includes(interaction.commandName)) {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (!interaction.deferred) await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const context = createPrivateCommandContext(interaction);
       try {
         if (['osuverify', 'verify'].includes(interaction.commandName)) {
@@ -617,32 +578,7 @@ function createInteractionHandler({ chat, osuMaps, osuVerification, store }) {
       return;
     }
 
-    if (interaction.commandName !== 'alren') return;
 
-    if (!chat) {
-      await interaction.reply({
-        content: 'OpenAI is not configured yet. Add an API key to the environment variables.',
-        flags: MessageFlags.Ephemeral,
-      });
-      scheduleReplyDeletion(interaction);
-      return;
-    }
-
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    try {
-      const answer = await chat.reply({
-        channelId: interaction.channelId,
-        userId: interaction.user.id,
-        displayName: interaction.member?.displayName || interaction.user.username,
-        prompt: interaction.options.getString('message', true),
-      });
-      await interaction.editReply({ embeds: [createAlrenEmbed(answer)] });
-    } catch (error) {
-      console.error('Slash chat request failed:', error.message);
-      await interaction.editReply(commandError('I cannot respond right now.', error));
-    }
-
-    scheduleReplyDeletion(interaction);
   };
 }
 

@@ -1,3 +1,4 @@
+const { setupAccess } = require('./setup-access');
 const crypto = require('node:crypto');
 const http = require('node:http');
 const {
@@ -584,11 +585,8 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
       await message.reply('Use this command in a Discord server.');
       return;
     }
-    const memberPermissions = message.memberPermissions || message.member?.permissions;
-    if (!memberPermissions?.has(PermissionsBitField.Flags.ManageGuild)) {
-      await message.reply('Only members with the Manage Server permission can set the verification role.');
-      return;
-    }
+    const denied = await setupAccess(message, store);
+    if (denied) { await message.reply(denied); return; }
     const role = selectedRole || message.mentions?.roles?.first();
     if (!role) {
       await message.reply('Usage: `!verify-setting @Verified` or `/setup verify role:@Verified channel:#verify-log`.');

@@ -43,13 +43,15 @@ function dependencies(overrides = {}) {
   };
 }
 
-test('prefix chat sends a styled private response', async () => {
-  const input = message('!alren hello');
-  await createMessageHandler(dependencies())(input);
-
-  assert.equal(input.sent.length, 1);
-  assert.equal(input.sent[0].embeds[0].data.author.name, 'Alren');
-  assert.equal(input.sent[0].embeds[0].data.description, 'Hello from Alren');
+test('removed AI prefix and mention commands do not invoke chat', async () => {
+  let calls = 0;
+  const handler = createMessageHandler(dependencies({ chat: { async reply() { calls++; } } }));
+  for (const content of ['!alren hello', '!chat hello', '!alrenclear', '<@bot> hello']) {
+    const input = message(content);
+    await handler(input);
+    assert.equal(input.sent.length, 0);
+  }
+  assert.equal(calls, 0);
 });
 
 test('prefix verification can start without an osu id', async () => {
@@ -70,7 +72,7 @@ test('help cards display only the English guide', () => {
   const english = createHelpEmbed().toJSON();
   assert.match(english.title, /English/);
   assert.equal(english.url, COMMANDS_URL);
-  assert.match(english.fields[0].name, /Private chat/);
+  assert.match(english.fields[0].name, /Verify your account/);
   assert.ok(english.fields.at(-1).value.includes(COMMANDS_URL));
   assert.doesNotMatch(JSON.stringify(english), /\p{Script=Thai}/u);
   assert.deepEqual(createHelpEmbed('th').toJSON(), english);

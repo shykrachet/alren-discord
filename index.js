@@ -1,11 +1,10 @@
+const { resolveInviter } = require('./src/setup-access');
 require('dotenv').config();
 
 const { Client, GatewayIntentBits, MessageFlags } = require('discord.js');
-const OpenAI = require('openai');
 const {
-  AI_BASE_URL, DISCORD_TOKEN, OPENAI_API_KEY, SQLITE_PATH,
+  DISCORD_TOKEN, SQLITE_PATH,
 } = require('./src/config');
-const { createChatService } = require('./src/chat');
 const {
   createBnClosedEmbed, createBnRequestEmbed, createCommunityAlertsService, createMissionEmbed,
   shouldDeliverCommunityAlert,
@@ -30,10 +29,6 @@ const bot = new Client({
   ],
 });
 
-const openai = OPENAI_API_KEY
-  ? new OpenAI({ apiKey: OPENAI_API_KEY, ...(AI_BASE_URL && { baseURL: AI_BASE_URL }) })
-  : null;
-const chat = openai ? createChatService(openai) : null;
 const verificationStore = createSqliteStore({ dbPath: SQLITE_PATH });
 const communityAlerts = createCommunityAlertsService();
 const osuMaps = createOsuMapService({ store: verificationStore });
@@ -45,7 +40,9 @@ const osuVerification = createOsuVerificationService({
 
 bot.once('clientReady', async () => {
   console.log(`online: ${bot.user.tag}`);
-  if (!chat) console.warn('Chat is disabled: add OPENAI_API_KEY to .env');
+  for (const guild of bot.guilds.cache.values()) {
+    resolveInviter(guild, verificationStore).catch((error) => console.warn(`Could not identify inviter for ${guild.id}:`, error.message));
+  }
   try {
     const modeIcons = await syncApplicationModeEmojis(bot.application);
     console.log(`mode icons ready: ${modeIcons.ready} (${modeIcons.created} created)`);
@@ -100,23 +97,28 @@ bot.once('clientReady', async () => {
 
 bot.on('messageCreate', createMessageHandler({
   bot,
-  chat,
   osuMaps,
   osuVerification,
   store: verificationStore,
 }));
+bot.on('guildAuditLogEntryCreate', (entry, guild) => {
+  if (entry.action === 28 && entry.targetId === bot.user.id) {
+    resolveInviter(guild, verificationStore).catch((error) => console.warn('Could not save inviter:', error.message));
+  }
+});
+
 bot.on('guildMemberAdd', (member) => {
   osuVerification.sendWelcomeVerification(member).catch((error) => {
     console.error('Welcome verification failed:', error.message);
   });
 });
 bot.on('guildCreate', (guild) => {
+  resolveInviter(guild, verificationStore).catch((error) => console.warn(`Could not identify inviter for ${guild.id}:`, error.message));
   registerGuildSlashCommands({ client: bot, guild, token: DISCORD_TOKEN }).catch((error) => {
     console.error(`Could not register slash commands for ${guild.id}:`, error.message);
   });
 });
 const handleInteraction = createInteractionHandler({
-  chat,
   osuMaps,
   osuVerification,
   store: verificationStore,

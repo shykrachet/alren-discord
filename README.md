@@ -1,8 +1,8 @@
 # Alren
 
-Alren is a Discord bot featuring osu! account verification, private AI chat, beatmap discovery and realtime updates, and BN / Mappers' Guild community alerts.
+Alren is a Discord bot featuring osu! account verification, beatmap discovery and realtime updates, and BN / Mappers' Guild community alerts.
 
-All bot interface text is in English, including commands, help, notifications, verification pages and errors. AI chat also replies in English when users write in another language.
+All bot interface text is in English, including commands, help, notifications, verification pages and errors.
 
 ---
 
@@ -28,7 +28,7 @@ All bot interface text is in English, including commands, help, notifications, v
 - **osu! Verification**: One-click OAuth verification, automatic server role assignment, profile synchronization, and welcome messages.
 - **Beatmap Feed & Discovery**: `/map` command with status/mode filters and automated realtime channel feeds for Ranked, Qualified, and Loved beatmaps.
 - **Community Alerts**: Realtime notifications for Beatmap Nominator (BN) request status openings/closures and Mappers' Guild mission openings.
-- **Private AI Chat**: Ephemeral and DM-based AI chat powered by OpenAI or OpenRouter models.
+- **AI chat removed**: `/alren`, `/alrenclear`, prefix chat and mention chat are no longer available.
 - **Built-in SQLite Storage**: Zero-configuration, file-based database powered by `better-sqlite3` with automated schema migrations.
 
 ---
@@ -48,7 +48,7 @@ All bot interface text is in English, including commands, help, notifications, v
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/Punuy/alren-discord.git
+git clone https://github.com/shykrachet/alren-discord.git
 cd alren-discord
 npm ci
 npm run setup
@@ -126,6 +126,7 @@ When adding the bot to your Discord server via OAuth2 URL generator, ensure the 
 
 - **Scopes**: `bot`, `applications.commands`
 - **Permissions**:
+  - View Audit Log *(Required to identify the person who invited Alren)*
   - View Channels
   - Send Messages
   - Read Message History
@@ -138,6 +139,18 @@ When adding the bot to your Discord server via OAuth2 URL generator, ensure the 
 ---
 
 ## Commands
+
+Everyday commands are available to everyone. Only the person who invited Alren
+can use `/setup` (including status) and legacy commands that change server settings.
+Administrator and Manage Server permissions do not bypass this restriction.
+Alren records the inviter in SQLite using the bot-add audit record; give the bot
+**View Audit Log** permission. If the record is unavailable or expired, setup stays
+locked until Alren is invited again and can identify the inviter. Saved settings
+are preserved. Keep SQLite on persistent storage to retain the recorded inviter.
+
+AI chat has been removed. The old AI configuration examples below are retained
+for reference and are no longer used by the running bot.
+
 
 ### Slash Commands
 
@@ -152,8 +165,6 @@ When adding the bot to your Discord server via OAuth2 URL generator, ensure the 
 | `/setup verify <role> [channel]` | Configure verified role and public announcement channel. |
 | `/setup beatmap [channel] [status] [mode] [enabled]` | Set up automatic beatmap filters per channel, or disable that channel’s feed. Defaults to the current channel. |
 | `/setup bn-management [channel] [bn_mode]` | Set up BN and Mappers' Guild alerts channel. |
-| `/alren <message>` | Start a private conversational session with Alren. |
-| `/alrenclear` | Clear conversation memory in the current channel. |
 
 ### Beatmap feed examples
 
@@ -183,7 +194,7 @@ This watches Ranked and Loved separately and posts new maps from both statuses. 
 
 ### Legacy Prefix Commands
 
-Prefix commands using `!` (such as `!help`, `!alren <message>`, `!map`, and `!osuverify`) remain supported as fallbacks.
+Prefix commands using `!` (such as `!help`, `!map`, and `!osuverify`) remain supported as fallbacks.
 
 ---
 
