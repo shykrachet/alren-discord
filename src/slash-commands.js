@@ -285,8 +285,7 @@ async function registerSlashCommands({ client, token, rest: providedRest }) {
     await rest.put(Routes.applicationCommands(applicationId), { body: COMMANDS });
   }
 
-  // Keep guild commands current as well: guild updates are available immediately,
-  // while clients may still hold an older global command definition.
+  // Dev uses guild commands for immediate updates. Main removes its old guild copies.
   const guilds = [...client.guilds.cache.values()];
   const syncResults = await Promise.allSettled(guilds.map((guild) => registerGuildSlashCommands({
     client, guild, rest,
@@ -314,11 +313,15 @@ async function registerGuildSlashCommands({
   if (!client.user || !guild?.id || (!token && !providedRest)) return;
 
   const rest = createRest(token, providedRest);
+  const applicationId = getApplicationId(client);
+  const commands = applicationId === ALREN_DEV_APPLICATION_ID ? COMMANDS : [];
   await rest.put(
-    Routes.applicationGuildCommands(getApplicationId(client), guild.id),
-    { body: COMMANDS },
+    Routes.applicationGuildCommands(applicationId, guild.id),
+    { body: commands },
   );
-  console.log(`registered ${COMMANDS.length} slash command(s) for ${guild.name || guild.id}`);
+  console.log(commands.length
+    ? `registered ${commands.length} slash command(s) for ${guild.name || guild.id}`
+    : `cleared guild slash command copies for ${guild.name || guild.id}`);
 }
 
 function createInteractionHandler({ osuMaps, osuVerification, store }) {
