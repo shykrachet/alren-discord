@@ -30,6 +30,13 @@ CREATE TABLE IF NOT EXISTS osu_verifications (
 CREATE INDEX IF NOT EXISTS idx_osu_verifications_osu_user
   ON osu_verifications (guild_id, osu_user_id);
 
+CREATE TABLE IF NOT EXISTS osu_profile_roles (
+  guild_id TEXT NOT NULL,
+  category TEXT NOT NULL,
+  role_id TEXT NOT NULL,
+  PRIMARY KEY (guild_id, category)
+);
+
 CREATE TABLE IF NOT EXISTS osu_verification_settings (
   guild_id TEXT PRIMARY KEY,
   role_id TEXT,
@@ -351,12 +358,25 @@ function createSqliteStore({ dbPath = path.join(__dirname, '../data/alren.sqlite
   });
 
   const resetGuildTx = db.transaction((guildId) => {
-    for (const table of ['osu_verification_settings', 'osu_verification_requests', 'osu_map_settings', 'osu_map_posts', 'community_alert_settings']) {
+    for (const table of ['osu_verification_settings', 'osu_verification_requests', 'osu_profile_roles', 'osu_map_settings', 'osu_map_posts', 'community_alert_settings']) {
       db.prepare(`DELETE FROM ${table} WHERE guild_id = ?`).run(guildId);
     }
   });
 
   return {
+    listVerifiedMembers: async (guildId) => db.prepare(
+      'SELECT discord_user_id, osu_user_id FROM osu_verifications WHERE guild_id = ? ORDER BY discord_user_id'
+    ).all(guildId),
+    listOsuProfileRoles: async (guildId) => db.prepare(
+      'SELECT category, role_id FROM osu_profile_roles WHERE guild_id = ? ORDER BY category'
+    ).all(guildId),
+    saveOsuProfileRole: async (guildId, category, roleId) => db.prepare(`
+      INSERT INTO osu_profile_roles (guild_id, category, role_id) VALUES (?, ?, ?)
+      ON CONFLICT(guild_id, category) DO UPDATE SET role_id = excluded.role_id
+    `).run(guildId, category, roleId),
+    deleteOsuProfileRole: async (guildId, category) => db.prepare(
+      'DELETE FROM osu_profile_roles WHERE guild_id = ? AND category = ?'
+    ).run(guildId, category),
     resetGuildSettings: async (guildId) => resetGuildTx(guildId),
     grantBotAccess: async (guildId, userId, grantedBy, joinedAt) => {
       const installation = joinedAt || db.prepare('SELECT joined_at FROM bot_inviters WHERE guild_id = ?').get(guildId)?.joined_at || '';

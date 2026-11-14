@@ -9,6 +9,7 @@ const {
 } = require('./message-handler');
 const { createMapEmbed } = require('./osu-maps');
 const { modeIcon } = require('./mode-icons');
+const { PROFILE_ROLES } = require('./osu-profile-roles');
 
 const ALREN_DEV_APPLICATION_ID = '1571056197719695421';
 
@@ -114,7 +115,17 @@ const SETUP_COMMAND = new SlashCommandBuilder()
     .addStringOption((option) => option
       .setName('bn_mode')
       .setDescription('BN mode to receive alerts for.')
-      .addChoices(...BN_MODE_CHOICES)));
+      .addChoices(...BN_MODE_CHOICES)))
+  .addSubcommand((subcommand) => subcommand
+    .setName('osu-role')
+    .setDescription('View or configure roles based on verified osu! profiles.')
+    .addStringOption((option) => option.setName('category').setDescription('osu! group or mapping achievement.')
+      .addChoices(...Object.entries(PROFILE_ROLES).map(([value, name]) => ({ name, value }))))
+    .addRoleOption((option) => option.setName('role').setDescription('Discord role to assign.'))
+    .addBooleanOption((option) => option.setName('disable').setDescription('Stop assigning the selected category.')))
+  .addSubcommand((subcommand) => subcommand
+    .setName('osu-role-sync')
+    .setDescription('Check all verified members for configured osu! profile roles.'));
 
 const COMMANDS = [
   PING_COMMAND.toJSON(),
@@ -309,7 +320,11 @@ function createInteractionHandler({ osuMaps, osuVerification, store }) {
       return;
     }
     if (!interaction.isChatInputCommand()) return;
-    if (!interaction.deferred) await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (!interaction.deferred) {
+      await interaction.deferReply(interaction.commandName === 'setup' && interaction.inGuild()
+        ? {}
+        : { flags: MessageFlags.Ephemeral });
+    }
     const accessDenied = await commandAccess(interaction, store);
     if (accessDenied) { await interaction.editReply({ content: accessDenied }); return; }
 
@@ -329,7 +344,6 @@ function createInteractionHandler({ osuMaps, osuVerification, store }) {
     }
 
     if (['setup', 'community-alert-settings', 'verify-setting', 'verify-role', 'osumap-settings'].includes(interaction.commandName) && interaction.inGuild()) {
-      if (!interaction.deferred) await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const denied = await setupAccess(interaction, store);
       if (denied) { await interaction.editReply({ content: denied }); return; }
     }
@@ -340,13 +354,33 @@ function createInteractionHandler({ osuMaps, osuVerification, store }) {
         return;
       }
       if (!store?.isConfigured) {
-        await interaction.editReply({ content: 'A configured database is required to use `/setup`.', flags: MessageFlags.Ephemeral });
+        await interaction.editReply({ content: 'A configured database is required to use `/setup`.' });
         return;
       }
 
-      if (!interaction.deferred) await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       try {
         const section = interaction.options.getSubcommand(false) || 'status';
+        if (section === 'osu-role-sync') {
+          const status = await osuVerification.startProfileRoleSync(interaction.guild, (content) =>
+            interaction.channel.send({ content, allowedMentions: { parse: [] } }));
+          await interaction.editReply({ content: status });
+          return;
+        }
+        if (section === 'osu-role') {
+          const category = interaction.options.getString('category');
+          const role = interaction.options.getRole('role');
+          const disable = interaction.options.getBoolean('disable');
+          if ((role || disable) && !category) throw new Error('Select a category first.');
+          if (role && disable) throw new Error('Choose a role or disable the category.');
+          if (role || disable) await osuVerification.configureProfileRole(interaction.guild, category, role);
+          const roles = await store.listOsuProfileRoles(interaction.guildId);
+          await interaction.editReply({
+            content: roles.map(({ category: key, role_id: id }) => `${PROFILE_ROLES[key]} · <@&${id}>`).join('\n')
+              || 'No osu! profile roles configured.',
+            allowedMentions: { parse: [] },
+          });
+          return;
+        }
         let updated = false;
         let currentVerify = await store.getVerificationSettings(interaction.guildId);
         let currentAlerts = await store.getCommunityAlertSettings(interaction.guildId);
@@ -420,7 +454,6 @@ function createInteractionHandler({ osuMaps, osuVerification, store }) {
         console.error('Quick setup failed:', error.message);
         await interaction.editReply(`Could not save settings: ${error.message}`);
       }
-      scheduleReplyDeletion(interaction);
       return;
     }
 

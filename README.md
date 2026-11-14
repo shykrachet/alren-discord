@@ -172,6 +172,8 @@ for reference and are no longer used by the running bot.
 | `/reset` | Clear server settings after a 60-second confirmation. Keeps linked osu! accounts, access grants and inviter identity. Inviter only. |
 | `/setup status` | Overview of server settings (verification, feed, alerts). |
 | `/setup verify [role] [channel] [panel]` | Configure the verified role, result channel and channel with the Verify button. |
+| `/setup osu-role [category] [role] [disable]` | View or configure automatic osu! profile roles. |
+| `/setup osu-role-sync` | Check previously verified members in the background and post a summary. |
 | `/setup beatmap [channel] [status] [mode] [enabled]` | Set up automatic beatmap filters per channel, or disable that channel’s feed. Defaults to the current channel. |
 | `/setup bn-management [channel] [bn_mode]` | Set up BN and Mappers' Guild alerts channel. |
 
@@ -204,6 +206,8 @@ This watches Ranked and Loved separately and posts new maps from both statuses. 
 ### Legacy Prefix Commands
 
 To enable the verification panel, run `/setup verify role:@Verified channel:#verify-done panel:#verify` as the inviter. Allow members to view `#verify` and give Alren View Channel, Send Messages and Embed Links in both channels. Members click **Verify**, enter the numeric ID from their osu! profile URL, and receive a private link in `#verify`. After osu! confirms the account, Alren assigns the verified role and posts the linked Discord member and osu! profile in `#verify-done`. Run setup with `panel` again to repost or move the panel.
+
+For example, use `/setup osu-role category:Ranked Mapper role:@Ranked Mapper`. Repeat for each category you want to enable. Keep Alren's Discord role above the assigned roles. The bot checks the linked osu! profile on verification and adds matching configured roles. Run `/setup osu-role-sync` to check accounts already linked in this server. Sync adds eligible roles and leaves existing roles in place.
 
 Prefix commands using `!` (such as `!help`, `!map`, and `!osuverify`) remain supported as fallbacks.
 

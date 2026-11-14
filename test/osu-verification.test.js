@@ -3,6 +3,33 @@ const test = require('node:test');
 const { MessageFlags, PermissionsBitField } = require('discord.js');
 
 const { createOsuVerificationService } = require('../src/osu-verification');
+const { activeOsuTeamIds, eligibleProfileRoles, PROFILE_ROLES } = require('../src/osu-profile-roles');
+
+test('osu! role eligibility uses group membership and published map counts', () => {
+  assert.deepEqual([...eligibleProfileRoles({
+    id: 123,
+    groups: [{ identifier: 'nat' }, { identifier: 'bng_limited' }, { identifier: 'gmt' },
+      { name: 'Project Loved Team' }, { name: 'Featured Artists' },
+      ...[11, 22, 16, 48, 50].map((id) => ({ id }))],
+    loved_beatmapset_count: 1,
+    ranked_beatmapset_count: 2,
+  }, new Set(['123']))], Object.keys(PROFILE_ROLES));
+  assert.deepEqual([...eligibleProfileRoles({
+    is_bng: true, ranked_beatmapset_count: 0, loved_beatmapset_count: 0,
+  })], ['bn']);
+  assert.deepEqual([...eligibleProfileRoles({ badges: [{ description: 'Featured Artist' }] })], []);
+});
+
+test('osu! team uses active roster IDs and excludes inactive members', () => {
+  const roster = activeOsuTeamIds([
+    '# osu! team',
+    '| [Active](https://osu.ppy.sh/users/123) | Developer |',
+    '## Inactive core team members',
+    '| [Inactive](https://osu.ppy.sh/users/456) | Contributor |',
+  ].join('\n'));
+  assert.deepEqual([...roster], ['123']);
+  assert.deepEqual([...eligibleProfileRoles({ id: 456, team: { name: 'osu! team' } }, roster)], []);
+});
 
 test('verification role setup explains Discord role hierarchy fixes', async () => {
   const botMember = {

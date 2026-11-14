@@ -72,7 +72,7 @@ test('registers matching global and guild commands without deleting guild defini
   assert.doesNotMatch(JSON.stringify(calls[0].options.body), /\p{Script=Thai}/u);
   assert.deepEqual(calls[0].options.body.find((command) => command.name === 'help').options, []);
   const setupCommand = calls[0].options.body.find((command) => command.name === 'setup');
-  assert.deepEqual(setupCommand.options.map((option) => option.name), ['status', 'verify', 'beatmap', 'bn-management']);
+  assert.deepEqual(setupCommand.options.map((option) => option.name), ['status', 'verify', 'beatmap', 'bn-management', 'osu-role', 'osu-role-sync']);
   const beatmapOptions = setupCommand.options.find((option) => option.name === 'beatmap').options;
   assert.deepEqual(beatmapOptions.map((option) => option.name), ['channel', 'status', 'mode', 'enabled']);
   const modeChoices = beatmapOptions.find((option) => option.name === 'mode').choices;
@@ -289,7 +289,7 @@ test('setup beatmap adds separate mode channels, displays every feed, and disabl
   const standard = setupInteraction({ channel: { id: 'standard' }, mode: 'osu' });
   await handler(standard);
   assert.deepEqual(configured.map((settings) => [settings.channelId, settings.mode]), [['mania', 'mania'], ['standard', 'osu']]);
-  assert.equal(mania.deferred.flags, MessageFlags.Ephemeral);
+  assert.equal(mania.deferred.flags, undefined);
   assert.equal((await store.getMapSettings('guild', 'mania')).status_filter, 'ranked_loved');
   assert.equal((await store.getMapSettings('guild', 'standard')).status_filter, 'ranked');
 
@@ -298,6 +298,7 @@ test('setup beatmap adds separate mode channels, displays every feed, and disabl
   assert.equal(configured.at(-1).channelId, 'taiko');
   const status = setupInteraction({ section: 'status' });
   await handler(status);
+  assert.equal(status.deferred.flags, undefined);
   const mapField = status.result.embeds[0].toJSON().fields.find((field) => field.name.includes('Beatmap'));
   assert.match(mapField.value, /<#mania>.*Ranked \+ Loved.*mania/);
   assert.match(mapField.value, /<#standard>.*Ranked.*Standard/);
