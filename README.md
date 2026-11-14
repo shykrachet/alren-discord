@@ -142,7 +142,7 @@ When adding the bot to your Discord server via OAuth2 URL generator, ensure the 
 
 Members must receive access from the person who invited Alren before using
 commands, including `/help`, `/ping`, `/verify`, and `/map`. The inviter can use
-`/access grant user:@member`, `/access revoke user:@member`, and `/access list`.
+`/access grant member:@member`, `/access revoke member:@member`, and `/access list`.
 Access is scoped to this server and saved in SQLite. Granted members can use
 ordinary commands; they cannot grant access, configure the server, or reset it.
 Only the person who invited Alren can use `/setup` (including status), `/access`,
@@ -163,45 +163,51 @@ for reference and are no longer used by the running bot.
 | --- | --- |
 | `/help` | Display the English command guide and documentation. |
 | `/ping` | Check bot latency and online status. |
-| `/verify [osu_id]` | Initiate osu! OAuth account verification. |
+| `/verify [osu_user_id]` | Initiate osu! OAuth account verification. |
 | `/verify-status` | View linked osu! account details for the current server. |
-| `/map [status] [mode]` | Post a random beatmap matching given filters. |
-| `/access grant user:@member` | Allow a server member to use Alren. Inviter only. |
-| `/access revoke user:@member` | Remove a member's command access. Inviter only. |
+| `/map [map_status] [game_mode]` | Post a random beatmap matching given filters. |
+| `/access grant member:@member` | Allow a server member to use Alren. Inviter only. |
+| `/access revoke member:@member` | Remove a member's command access. Inviter only. |
 | `/access list` | View members granted access. Inviter only. |
 | `/reset` | Clear server settings after a 60-second confirmation. Keeps linked osu! accounts, access grants and inviter identity. Inviter only. |
 | `/setup status` | Overview of server settings (verification, feed, alerts). |
-| `/setup verify <role> [channel]` | Configure verified role and public announcement channel. |
-| `/setup beatmap [channel] [status] [mode] [enabled]` | Set up automatic beatmap filters per channel, or disable that channel’s feed. Defaults to the current channel. |
-| `/setup bn-management [channel] [bn_mode]` | Set up BN and Mappers' Guild alerts channel. |
+| `/setup verify [verify_channel] [result_channel] [verified_role]` | Configure the verified role, result channel and channel with the Verify button. |
+| `/setup osu-role [osu_category] [discord_role] [stop_assigning]` | View or configure automatic osu! profile roles. |
+| `/setup osu-role-sync` | Check previously verified members in the background and post a summary. |
+| `/setup beatmap [feed_channel] [map_status] [game_mode] [feed_enabled]` | Set up automatic beatmap filters per channel, or disable that channel’s feed. Defaults to the current channel. |
+| `/setup bn-management [alert_channel] [game_mode]` | Set up BN and Mappers' Guild alerts channel. |
 
 ### Beatmap feed examples
 
 Configure multiple beatmap feeds in the same server by running the command once per channel:
 
 ```text
-/setup beatmap channel:#mania mode:mania status:ranked
-/setup beatmap channel:#standard mode:osu status:ranked
-/setup beatmap channel:#taiko mode:taiko status:ranked
-/setup beatmap channel:#catch mode:catch status:ranked
+/setup beatmap feed_channel:#mania game_mode:mania map_status:ranked
+/setup beatmap feed_channel:#standard game_mode:osu map_status:ranked
+/setup beatmap feed_channel:#taiko game_mode:taiko map_status:ranked
+/setup beatmap feed_channel:#catch game_mode:catch map_status:ranked
 ```
 
-`osu` is displayed as **Standard (osu!)** in the mode picker. Each channel keeps its own filters and posting history, so a set containing several modes can appear in each matching channel. Use `mode:any` (**All Mode**, without an icon) for all modes in one channel, and `status:all` for Ranked, Qualified, and Loved. Existing feed settings and history migrate automatically to their original channel.
+`osu` is displayed as **Standard (osu!)** in the mode picker. Each channel keeps its own filters and posting history, so a set containing several modes can appear in each matching channel. Use `game_mode:any` (**All game modes**, without an icon) for all modes in one channel, and `map_status:all` for Ranked, Qualified, and Loved. Existing feed settings and history migrate automatically to their original channel.
 
 Mode icons in bot messages and embeds use the Discord application emojis uploaded from `img/modes` at startup. The `*-emoji.png` assets are centered 128×128 crops of the original icons, with consistent padding for inline text. They use `alren_mode_*_v2` names so restarting the bot uploads the resized set while preserving the old emojis for existing messages. Slash-command choices display plain mode names because Discord does not support custom emoji in those choices.
 
-For both **Ranked + Loved** in the same channel, choose `status:ranked_loved`:
+For both **Ranked + Loved** in the same channel, choose `map_status:ranked_loved`:
 
 ```text
-/setup beatmap channel:#mania mode:mania status:ranked_loved
-/setup beatmap channel:#standard mode:osu status:ranked_loved
+/setup beatmap feed_channel:#mania game_mode:mania map_status:ranked_loved
+/setup beatmap feed_channel:#standard game_mode:osu map_status:ranked_loved
 ```
 
-This watches Ranked and Loved separately and posts new maps from both statuses. You can also choose just `status:ranked` or `status:loved` per channel. `/map status:ranked_loved` randomly selects one of these two statuses, and `/map` inherits this option when saved for the current channel.
+This watches Ranked and Loved separately and posts new maps from both statuses. You can also choose just `map_status:ranked` or `map_status:loved` per channel. `/map map_status:ranked_loved` randomly selects one of these two statuses, and `/map` inherits this option when saved for the current channel.
 
-`/map` uses the current channel’s saved filters unless you supply overrides. Unconfigured channels default to any mode and Ranked. `/setup status` lists the configured feeds. To stop only one feed, run `/setup beatmap channel:#mania enabled:false`.
+`/map` uses the current channel’s saved filters unless you supply overrides. Unconfigured channels default to any mode and Ranked. `/setup status` lists the configured feeds. To stop only one feed, run `/setup beatmap feed_channel:#mania feed_enabled:false`.
 
 ### Legacy Prefix Commands
+
+To enable the verification panel, run `/setup verify verify_channel:#verify result_channel:#verify-done verified_role:@Verified` as the inviter. Allow members to view `#verify` and give Alren View Channel, Send Messages and Embed Links in both channels. Members click **Verify**, enter the numeric ID from their osu! profile URL, and receive a private link in `#verify`. After osu! confirms the account, Alren assigns the verified role and posts the linked Discord member and osu! profile in `#verify-done`. Run setup with `verify_channel` again to repost or move the panel.
+
+For example, use `/setup osu-role osu_category:Ranked Mapper discord_role:@Ranked Mapper`. Repeat for each category you want to enable. Keep Alren's Discord role above the assigned roles. The bot checks the linked osu! profile on verification and adds matching configured roles. Run `/setup osu-role-sync` to check accounts already linked in this server. Alren checks linked profiles at startup and again 15 minutes after each scan finishes. It adds eligible configured roles and removes roles it recorded assigning when osu! confirms the member no longer qualifies. Roles already present before tracking started are kept.
 
 Prefix commands using `!` (such as `!help`, `!map`, and `!osuverify`) remain supported as fallbacks.
 

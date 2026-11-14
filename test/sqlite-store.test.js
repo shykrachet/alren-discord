@@ -220,18 +220,31 @@ test('sqlite-store: server setup, linked accounts and feed history survive reope
   let store = createSqliteStore({ dbPath });
   try {
     await store.saveBotInviter('guild', 'inviter', '100000');
-    await store.saveVerificationSettings('guild', { channelId: 'welcome', roleId: 'verified' });
+    await store.saveVerificationSettings('guild', {
+      channelId: 'welcome', roleId: 'verified', panelChannelId: 'verify', panelMessageId: 'panel',
+    });
+    await store.saveVerificationSettings('guild', { channelId: 'results', roleId: 'verified' });
     await store.saveMapSettings('guild', { channelId: 'maps', mode: 'mania', status: 'ranked_loved' });
     await store.saveCommunityAlertSettings('guild', { channelId: 'alerts', bnMode: 'osu' });
+    await store.saveOsuProfileRole('guild', 'ranked_mapper', 'mapper-role');
+    await store.saveOsuProfileRole('other-guild', 'ranked_mapper', 'other-mapper-role');
     await store.saveVerification({ guildId: 'guild', discordUserId: 'user', osuUser: { id: 123, username: 'mapper' } });
+    await store.saveOsuProfileRoleGrant('guild', 'user', 'mapper-role');
     await store.markMapPosted('guild', 456, 'ranked', 'maps');
     store.close();
     store = createSqliteStore({ dbPath });
     assert.deepEqual(await store.getBotInviter('guild'), { user_id: 'inviter', joined_at: '100000' });
-    assert.deepEqual(await store.getVerificationSettings('guild'), { channel_id: 'welcome', role_id: 'verified' });
+    assert.deepEqual(await store.getVerificationSettings('guild'), {
+      channel_id: 'results', role_id: 'verified', panel_channel_id: 'verify', panel_message_id: 'panel',
+    });
     assert.equal((await store.getMapSettings('guild', 'maps')).status_filter, 'ranked_loved');
     assert.deepEqual(await store.getCommunityAlertSettings('guild'), { channel_id: 'alerts', bn_mode_filter: 'osu' });
+    assert.deepEqual(await store.listOsuProfileRoles('guild'), [{ category: 'ranked_mapper', role_id: 'mapper-role' }]);
+    assert.deepEqual(await store.listOsuProfileRoles('other-guild'), [{ category: 'ranked_mapper', role_id: 'other-mapper-role' }]);
     assert.equal((await store.getVerification('guild', 'user')).osu_user_id, '123');
+    assert.deepEqual(await store.listOsuProfileRoleGrants('guild', 'user'), [{ role_id: 'mapper-role' }]);
+    await store.deleteOsuProfileRoleGrant('guild', 'user', 'mapper-role');
+    assert.deepEqual(await store.listOsuProfileRoleGrants('guild', 'user'), []);
     assert.equal(await store.hasPostedMap('guild', 456, 'ranked', 'maps'), true);
   } finally {
     store.close();

@@ -72,19 +72,21 @@ test('registers matching global and guild commands without deleting guild defini
   assert.doesNotMatch(JSON.stringify(calls[0].options.body), /\p{Script=Thai}/u);
   assert.deepEqual(calls[0].options.body.find((command) => command.name === 'help').options, []);
   const setupCommand = calls[0].options.body.find((command) => command.name === 'setup');
-  assert.deepEqual(setupCommand.options.map((option) => option.name), ['status', 'verify', 'beatmap', 'bn-management']);
+  assert.deepEqual(setupCommand.options.map((option) => option.name), ['status', 'verify', 'beatmap', 'bn-management', 'osu-role', 'osu-role-sync']);
+  const verifyOptions = setupCommand.options.find((option) => option.name === 'verify').options;
+  assert.deepEqual(verifyOptions.map((option) => option.name), ['verify_channel', 'result_channel', 'verified_role']);
   const beatmapOptions = setupCommand.options.find((option) => option.name === 'beatmap').options;
-  assert.deepEqual(beatmapOptions.map((option) => option.name), ['channel', 'status', 'mode', 'enabled']);
-  const modeChoices = beatmapOptions.find((option) => option.name === 'mode').choices;
+  assert.deepEqual(beatmapOptions.map((option) => option.name), ['feed_channel', 'map_status', 'game_mode', 'feed_enabled']);
+  const modeChoices = beatmapOptions.find((option) => option.name === 'game_mode').choices;
   assert.deepEqual(modeChoices.map((choice) => choice.value), ['any', 'osu', 'taiko', 'catch', 'mania']);
-  assert.equal(modeChoices[0].name, 'All Mode');
-  assert.deepEqual(modeChoices.map((choice) => choice.name), ['All Mode', 'Standard (osu!)', 'osu!taiko', 'osu!catch / fruits', 'osu!mania']);
-  const bnChoices = setupCommand.options.find((option) => option.name === 'bn-management').options.find((option) => option.name === 'bn_mode').choices;
-  assert.equal(bnChoices[0].name, 'All Mode');
+  assert.equal(modeChoices[0].name, 'All game modes');
+  assert.deepEqual(modeChoices.map((choice) => choice.name), ['All game modes', 'Standard (osu!)', 'osu!taiko', 'osu!catch / fruits', 'osu!mania']);
+  const bnChoices = setupCommand.options.find((option) => option.name === 'bn-management').options.find((option) => option.name === 'game_mode').choices;
+  assert.equal(bnChoices[0].name, 'All game modes');
   assert.match(modeChoices.find((choice) => choice.value === 'osu').name, /Standard/);
   const statusChoice = { name: 'Ranked + Loved', value: 'ranked_loved' };
-  assert.ok(beatmapOptions.find((option) => option.name === 'status').choices.some((choice) => choice.name === statusChoice.name && choice.value === statusChoice.value));
-  assert.ok(calls[0].options.body.find((command) => command.name === 'map').options.find((option) => option.name === 'status').choices.some((choice) => choice.value === statusChoice.value));
+  assert.ok(beatmapOptions.find((option) => option.name === 'map_status').choices.some((choice) => choice.name === statusChoice.name && choice.value === statusChoice.value));
+  assert.ok(calls[0].options.body.find((command) => command.name === 'map').options.find((option) => option.name === 'map_status').choices.some((choice) => choice.value === statusChoice.value));
   const quickVerifyCommand = calls[0].options.body.find((command) => command.name === 'verify');
   assert.equal(quickVerifyCommand.options[0].required, false);
   assert.deepEqual(calls.slice(1), [
@@ -194,7 +196,8 @@ test('osumap-settings reports the real configuration error', async () => {
 
 test('setup verify configures a selected verification role', async () => {
   const selectedRole = { id: 'verified-role' };
-  const selectedChannel = { id: 'verify-channel' };
+  const selectedChannel = { id: 'result-channel' };
+  const selectedPanel = { id: 'verify-channel' };
   const configured = [];
   let reply;
   const interaction = {
@@ -206,8 +209,8 @@ test('setup verify configures a selected verification role', async () => {
     isChatInputCommand: () => true,
     memberPermissions: { has: () => true },
     options: {
-      getChannel: (name) => (name === 'channel' ? selectedChannel : null),
-      getRole: (name) => (name === 'role' ? selectedRole : null),
+      getChannel: (name) => ({ result_channel: selectedChannel, verify_channel: selectedPanel }[name] ?? null),
+      getRole: (name) => (name === 'verified_role' ? selectedRole : null),
       getString: () => null,
       getSubcommand: () => 'verify',
     },
@@ -237,6 +240,7 @@ test('setup verify configures a selected verification role', async () => {
   assert.equal(configured.length, 1);
   assert.equal(configured[0][1].role, selectedRole);
   assert.equal(configured[0][1].channel, selectedChannel);
+  assert.equal(configured[0][1].panelChannel, selectedPanel);
   assert.match(reply.embeds[0].toJSON().title, /settings saved/);
   assert.doesNotMatch(JSON.stringify(reply.embeds[0].toJSON()), /\p{Script=Thai}/u);
 });
@@ -289,7 +293,7 @@ test('setup beatmap adds separate mode channels, displays every feed, and disabl
   const standard = setupInteraction({ channel: { id: 'standard' }, mode: 'osu' });
   await handler(standard);
   assert.deepEqual(configured.map((settings) => [settings.channelId, settings.mode]), [['mania', 'mania'], ['standard', 'osu']]);
-  assert.equal(mania.deferred.flags, MessageFlags.Ephemeral);
+  assert.equal(mania.deferred.flags, undefined);
   assert.equal((await store.getMapSettings('guild', 'mania')).status_filter, 'ranked_loved');
   assert.equal((await store.getMapSettings('guild', 'standard')).status_filter, 'ranked');
 
@@ -298,6 +302,7 @@ test('setup beatmap adds separate mode channels, displays every feed, and disabl
   assert.equal(configured.at(-1).channelId, 'taiko');
   const status = setupInteraction({ section: 'status' });
   await handler(status);
+  assert.equal(status.deferred.flags, undefined);
   const mapField = status.result.embeds[0].toJSON().fields.find((field) => field.name.includes('Beatmap'));
   assert.match(mapField.value, /<#mania>.*Ranked \+ Loved.*mania/);
   assert.match(mapField.value, /<#standard>.*Ranked.*Standard/);
@@ -477,7 +482,7 @@ test('osumap-status shows configured beatmap feed settings', async () => {
   assert.match(embed.fields[1].value, /<:alren_mode_mania_v2:13>/);
   mode = 'any';
   await handler(interaction);
-  assert.equal(reply.embeds[0].toJSON().fields[1].value, 'Ranked · All Mode');
+  assert.equal(reply.embeds[0].toJSON().fields[1].value, 'Ranked · All game modes');
 });
 
 test('legacy help language dropdown switches to the English guide and removes language controls', async () => {
@@ -520,4 +525,22 @@ test('a failed guild sync does not prevent other servers receiving current comma
   assert.ok(calls.find((call) => call.route.includes('/guilds/healthy/')).payload.body.some((command) => command.name === 'setup'));
   assert.ok(calls.every((call) => call.payload.body.length === 8));
   assert.ok(warnings.some((warning) => warning.includes('failed') && warning.includes('Missing Access')));
+});
+
+test('Alren-Dev replaces its global commands with guild commands', async () => {
+  const calls = [];
+  const id = '1571056197719695421';
+  await registerSlashCommands({
+    client: {
+      application: { id },
+      user: { id },
+      guilds: { cache: new Map([['test', { id: 'test' }]]) },
+    },
+    rest: { async put(route, { body }) { calls.push({ route, body }); } },
+  });
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].route, `/applications/${id}/guilds/test/commands`);
+  assert.ok(calls[0].body.some(({ name }) => name === 'setup'));
+  assert.deepEqual(calls[1], { route: `/applications/${id}/commands`, body: [] });
 });

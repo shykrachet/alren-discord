@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const Database = require('better-sqlite3');
+const { PROFILE_ROLES } = require('./osu-profile-roles');
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS bot_access_grants (
@@ -30,10 +31,26 @@ CREATE TABLE IF NOT EXISTS osu_verifications (
 CREATE INDEX IF NOT EXISTS idx_osu_verifications_osu_user
   ON osu_verifications (guild_id, osu_user_id);
 
+CREATE TABLE IF NOT EXISTS osu_profile_roles (
+  guild_id TEXT NOT NULL,
+  category TEXT NOT NULL,
+  role_id TEXT NOT NULL,
+  PRIMARY KEY (guild_id, category)
+);
+
+CREATE TABLE IF NOT EXISTS osu_profile_role_grants (
+  guild_id TEXT NOT NULL,
+  discord_user_id TEXT NOT NULL,
+  role_id TEXT NOT NULL,
+  PRIMARY KEY (guild_id, discord_user_id, role_id)
+);
+
 CREATE TABLE IF NOT EXISTS osu_verification_settings (
   guild_id TEXT PRIMARY KEY,
   role_id TEXT,
   channel_id TEXT,
+  panel_channel_id TEXT,
+  panel_message_id TEXT,
   updated_at TEXT NOT NULL
 );
 
@@ -87,6 +104,12 @@ function createSqliteStore({ dbPath = path.join(__dirname, '../data/alren.sqlite
 
   // Initialize database schema
   db.exec(SCHEMA);
+  const verificationColumns = db.pragma('table_info(osu_verification_settings)');
+  for (const column of ['panel_channel_id', 'panel_message_id']) {
+    if (!verificationColumns.some(({ name }) => name === column)) {
+      db.exec(`ALTER TABLE osu_verification_settings ADD COLUMN ${column} TEXT`);
+    }
+  }
   if (!db.pragma('table_info(bot_access_grants)').some((column) => column.name === 'joined_at')) {
     db.exec("ALTER TABLE bot_access_grants ADD COLUMN joined_at TEXT NOT NULL DEFAULT ''");
   }
@@ -134,7 +157,7 @@ function createSqliteStore({ dbPath = path.join(__dirname, '../data/alren.sqlite
       'SELECT role_id FROM osu_verification_settings WHERE guild_id = ? LIMIT 1'
     ),
     getVerificationSettings: db.prepare(
-      'SELECT role_id, channel_id FROM osu_verification_settings WHERE guild_id = ? LIMIT 1'
+      'SELECT role_id, channel_id, panel_channel_id, panel_message_id FROM osu_verification_settings WHERE guild_id = ? LIMIT 1'
     ),
     saveVerificationRole: db.prepare(`
       INSERT INTO osu_verification_settings (guild_id, role_id, updated_at)
@@ -144,11 +167,13 @@ function createSqliteStore({ dbPath = path.join(__dirname, '../data/alren.sqlite
         updated_at = excluded.updated_at
     `),
     saveVerificationSettings: db.prepare(`
-      INSERT INTO osu_verification_settings (guild_id, channel_id, role_id, updated_at)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO osu_verification_settings (guild_id, channel_id, role_id, panel_channel_id, panel_message_id, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(guild_id) DO UPDATE SET
         channel_id = excluded.channel_id,
         role_id = excluded.role_id,
+        panel_channel_id = COALESCE(excluded.panel_channel_id, osu_verification_settings.panel_channel_id),
+        panel_message_id = COALESCE(excluded.panel_message_id, osu_verification_settings.panel_message_id),
         updated_at = excluded.updated_at
     `),
     getMapSettings: db.prepare(
@@ -249,8 +274,8 @@ function createSqliteStore({ dbPath = path.join(__dirname, '../data/alren.sqlite
     stmts.saveVerificationRole.run(guildId, roleId, new Date().toISOString());
   }
 
-  async function saveVerificationSettings(guildId, { channelId, roleId }) {
-    stmts.saveVerificationSettings.run(guildId, channelId ?? null, roleId ?? null, new Date().toISOString());
+  async function saveVerificationSettings(guildId, { channelId, roleId, panelChannelId, panelMessageId }) {
+    stmts.saveVerificationSettings.run(guildId, channelId ?? null, roleId ?? null, panelChannelId ?? null, panelMessageId ?? null, new Date().toISOString());
   }
 
   async function getMapSettings(guildId, channelId) {
@@ -341,12 +366,34 @@ function createSqliteStore({ dbPath = path.join(__dirname, '../data/alren.sqlite
   });
 
   const resetGuildTx = db.transaction((guildId) => {
-    for (const table of ['osu_verification_settings', 'osu_verification_requests', 'osu_map_settings', 'osu_map_posts', 'community_alert_settings']) {
+    for (const table of ['osu_verification_settings', 'osu_verification_requests', 'osu_profile_roles', 'osu_map_settings', 'osu_map_posts', 'community_alert_settings']) {
       db.prepare(`DELETE FROM ${table} WHERE guild_id = ?`).run(guildId);
     }
   });
 
   return {
+    listOsuProfileRoleGrants: async (guildId, userId) => db.prepare(
+      'SELECT role_id FROM osu_profile_role_grants WHERE guild_id = ? AND discord_user_id = ?'
+    ).all(guildId, userId),
+    saveOsuProfileRoleGrant: async (guildId, userId, roleId) => db.prepare(
+      'INSERT OR IGNORE INTO osu_profile_role_grants VALUES (?, ?, ?)'
+    ).run(guildId, userId, roleId),
+    deleteOsuProfileRoleGrant: async (guildId, userId, roleId) => db.prepare(
+      'DELETE FROM osu_profile_role_grants WHERE guild_id = ? AND discord_user_id = ? AND role_id = ?'
+    ).run(guildId, userId, roleId),
+    listVerifiedMembers: async (guildId) => db.prepare(
+      'SELECT discord_user_id, osu_user_id FROM osu_verifications WHERE guild_id = ? ORDER BY discord_user_id'
+    ).all(guildId),
+    listOsuProfileRoles: async (guildId) => db.prepare(
+      'SELECT category, role_id FROM osu_profile_roles WHERE guild_id = ? ORDER BY category'
+    ).all(guildId).filter(({ category }) => Object.hasOwn(PROFILE_ROLES, category)),
+    saveOsuProfileRole: async (guildId, category, roleId) => db.prepare(`
+      INSERT INTO osu_profile_roles (guild_id, category, role_id) VALUES (?, ?, ?)
+      ON CONFLICT(guild_id, category) DO UPDATE SET role_id = excluded.role_id
+    `).run(guildId, category, roleId),
+    deleteOsuProfileRole: async (guildId, category) => db.prepare(
+      'DELETE FROM osu_profile_roles WHERE guild_id = ? AND category = ?'
+    ).run(guildId, category),
     resetGuildSettings: async (guildId) => resetGuildTx(guildId),
     grantBotAccess: async (guildId, userId, grantedBy, joinedAt) => {
       const installation = joinedAt || db.prepare('SELECT joined_at FROM bot_inviters WHERE guild_id = ?').get(guildId)?.joined_at || '';
