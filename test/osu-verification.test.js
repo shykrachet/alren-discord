@@ -65,7 +65,7 @@ test('verification role setup explains Discord role hierarchy fixes', async () =
   );
 });
 
-test('the configured panel opens an osu! ID form and moving it invalidates old forms', async () => {
+test('the configured panel replies privately without opening a form and moving it invalidates old buttons', async () => {
   const posted = [];
   const deleted = [];
   let settings;
@@ -108,30 +108,20 @@ test('the configured panel opens an osu! ID form and moving it invalidates old f
   });
   await service.configureVerificationSettings(guild, { channel: results, panelChannel: verify, role });
   const context = { guildId: guild.id, channelId: verify.id, inGuild: () => true };
-  let modal;
-  await service.handlePanelInteraction({
+  let reply;
+  const click = {
     ...context,
     isButton: () => true,
     customId: posted[0].components[0].toJSON().components[0].custom_id,
     message: { id: settings.panel_message_id },
-    async showModal(builder) { modal = builder.toJSON(); },
-  });
-  assert.equal(modal.components[0].component.custom_id, 'osu_id');
-
-  let reply;
-  const submission = {
-    ...context,
-    isModalSubmit: () => true,
-    customId: modal.custom_id,
-    fields: { getTextInputValue: () => 'invalid' },
     async deferReply({ flags }) { assert.equal(flags, MessageFlags.Ephemeral); },
     async editReply(payload) { reply = payload.content; },
   };
-  await service.handlePanelInteraction(submission);
-  assert.match(reply, /numeric osu! ID/);
+  await service.handlePanelInteraction(click);
+  assert.match(reply, /An administrator must configure the bot first/);
 
   await service.configureVerificationSettings(guild, { panelChannel: newVerify, role });
   assert.deepEqual(deleted, ['panel-1']);
-  await service.handlePanelInteraction(submission);
+  await service.handlePanelInteraction(click);
   assert.match(reply, /no longer active/);
 });

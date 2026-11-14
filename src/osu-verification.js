@@ -3,8 +3,7 @@ const crypto = require('node:crypto');
 const http = require('node:http');
 const { setTimeout: delay } = require('node:timers/promises');
 const {
-  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, LabelBuilder, MessageFlags,
-  ModalBuilder, PermissionsBitField, TextInputBuilder, TextInputStyle,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags, PermissionsBitField,
 } = require('discord.js');
 const {
   OSU_CLIENT_ID,
@@ -18,14 +17,13 @@ const { PROFILE_ROLES, activeOsuTeamIds, eligibleProfileRoles } = require('./osu
 const PROFILE_ROLE_SYNC_INTERVAL_MS = 15 * 60 * 1000;
 const STATE_TTL_MS = 10 * 60 * 1000;
 const PANEL_BUTTON = 'alren-verify:open';
-const PANEL_MODAL_PREFIX = 'alren-verify:submit:';
 
 function createVerificationPanel() {
   return {
     embeds: [new EmbedBuilder()
       .setColor(0xff66aa)
       .setTitle('✅ Verify your osu! account')
-      .setDescription('Click **Verify**, enter your numeric osu! user ID, then sign in to osu! using the private link Alren sends here.')],
+      .setDescription('Click **Verify** to get your private osu! sign-in link here.')],
     components: [new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(PANEL_BUTTON).setLabel('Verify').setStyle(ButtonStyle.Primary),
     )],
@@ -636,40 +634,16 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
   }
 
   async function handlePanelInteraction(interaction) {
-    const button = interaction.isButton?.() && interaction.customId === PANEL_BUTTON;
-    const modal = interaction.isModalSubmit?.() && interaction.customId.startsWith(PANEL_MODAL_PREFIX);
-    if (!button && !modal) return false;
+    if (!interaction.isButton?.() || interaction.customId !== PANEL_BUTTON) return false;
 
-    if (modal) await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const settings = interaction.inGuild() && await store.getVerificationSettings(interaction.guildId);
-    const panelMessageId = button ? interaction.message.id : interaction.customId.slice(PANEL_MODAL_PREFIX.length);
     if (!settings?.panel_channel_id || settings.panel_channel_id !== interaction.channelId
-      || settings.panel_message_id !== panelMessageId) {
-      const content = 'This verification panel is no longer active. Use the current panel for this server.';
-      if (modal) await interaction.editReply({ content });
-      else await interaction.reply({ content, flags: MessageFlags.Ephemeral });
+      || settings.panel_message_id !== interaction.message.id) {
+      await interaction.editReply({ content: 'This verification panel is no longer active. Use the current panel for this server.' });
       return true;
     }
 
-    if (button) {
-      await interaction.showModal(new ModalBuilder()
-        .setCustomId(`${PANEL_MODAL_PREFIX}${panelMessageId}`)
-        .setTitle('Verify your osu! account')
-        .addLabelComponents(new LabelBuilder()
-          .setLabel('osu! user ID')
-          .setTextInputComponent(new TextInputBuilder()
-            .setCustomId('osu_id')
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true)
-            .setMaxLength(20))));
-      return true;
-    }
-
-    const osuUserId = interaction.fields.getTextInputValue('osu_id').trim().replace(/^0+/, '');
-    if (!/^\d{1,20}$/.test(osuUserId)) {
-      await interaction.editReply({ content: 'Enter the numeric osu! ID from your profile URL.' });
-      return true;
-    }
     await begin({
       author: interaction.user,
       channelId: interaction.channelId,
@@ -677,7 +651,7 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
       guildId: interaction.guildId,
       inGuild: () => interaction.inGuild(),
       reply: (payload) => interaction.editReply(typeof payload === 'string' ? { content: payload } : payload),
-    }, osuUserId, { inChannel: true });
+    }, undefined, { inChannel: true });
     return true;
   }
 
