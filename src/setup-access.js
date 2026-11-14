@@ -1,7 +1,7 @@
 const { AuditLogEvent } = require('discord.js');
 
 const ACCESS_DENIED = 'Only the person who invited Alren to this server can use setup commands.';
-const USE_DENIED = '🔒 You do not have access to Alren yet. Ask the person who invited Alren to grant access with `/access grant user:@you`.';
+const USE_DENIED = '🔒 You do not have access to Alren yet. Ask the person who invited Alren to grant access with `/access grant member:@you`.';
 const ACCESS_UNKNOWN = 'Alren could not identify the inviter. Grant Alren View Audit Log and try again. If the bot-add record has expired, invite Alren again so the inviter can be recorded. Existing settings are preserved.';
 
 function isBotOwner(userId) {

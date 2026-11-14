@@ -8,15 +8,14 @@ const { activeOsuTeamIds, eligibleProfileRoles, PROFILE_ROLES } = require('../sr
 test('osu! role eligibility uses group membership and published map counts', () => {
   assert.deepEqual([...eligibleProfileRoles({
     id: 123,
-    groups: [{ identifier: 'nat' }, { identifier: 'bng_limited' }, { identifier: 'gmt' },
-      { name: 'Project Loved Team' }, { name: 'Featured Artists' },
-      ...[11, 22, 16, 48, 50].map((id) => ({ id }))],
+    groups: [4, 7, 11, 16, 22, 26, 28, 29, 31, 32, 33, 35, 47, 48, 50].map((id) => ({ id })),
     loved_beatmapset_count: 1,
     ranked_beatmapset_count: 2,
   }, new Set(['123']))], Object.keys(PROFILE_ROLES));
   assert.deepEqual([...eligibleProfileRoles({
-    is_bng: true, ranked_beatmapset_count: 0, loved_beatmapset_count: 0,
-  })], ['bn']);
+    is_bng: true, groups: [{ id: 32 }], ranked_beatmapset_count: 0, loved_beatmapset_count: 0,
+  })], ['bn_probationary']);
+  assert.deepEqual([...eligibleProfileRoles({ groups: [26, 29, 33, 47].map((id) => ({ id })) })], []);
   assert.deepEqual([...eligibleProfileRoles({ badges: [{ description: 'Featured Artist' }] })], []);
 });
 

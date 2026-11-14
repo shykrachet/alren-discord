@@ -21,112 +21,128 @@ const MAP_STATUS_CHOICES = [
   { name: 'All statuses', value: 'all' },
 ];
 const MAP_MODE_CHOICES = [
-  { name: 'All Mode', value: 'any' },
+  { name: 'All game modes', value: 'any' },
   { name: 'Standard (osu!)', value: 'osu' },
   { name: 'osu!taiko', value: 'taiko' },
   { name: 'osu!catch / fruits', value: 'catch' },
   { name: 'osu!mania', value: 'mania' },
 ];
 const BN_MODE_CHOICES = [
-  { name: 'All Mode', value: 'all' },
+  { name: 'All game modes', value: 'all' },
   { name: 'Standard (osu!)', value: 'osu' },
   { name: 'Taiko', value: 'taiko' },
   { name: 'Catch / fruits', value: 'catch' },
   { name: 'Mania', value: 'mania' },
 ];
 
+// /ping — Check whether the bot responds and show its latency.
 const PING_COMMAND = new SlashCommandBuilder()
   .setName('ping')
-  .setDescription('Check whether Alren is online.');
+  .setDescription('Check if Alren is responding and see its latency.');
 
+// /help — Open the bot command guide.
 const QUICK_HELP_COMMAND = new SlashCommandBuilder()
   .setName('help')
-  .setDescription('Show Alren’s command guide privately.');
+  .setDescription('See what Alren commands do. Only you can see the guide.');
 
+// /verify-status — Show the osu! account linked to Discord.
 const VERIFY_STATUS_COMMAND = new SlashCommandBuilder()
   .setName('verify-status')
-  .setDescription('Show your verified osu! account privately.');
+  .setDescription('See which osu! account you linked in this server. Only you can see the result.');
 
+// /verify osu_user_id:123456 — Link an osu! account using the optional ID from the profile URL.
 const QUICK_VERIFY_COMMAND = new SlashCommandBuilder()
   .setName('verify')
-  .setDescription('Verify your osu! account privately with OAuth.')
+  .setDescription('Link your Discord account by signing in to osu! through a private link.')
   .addStringOption((option) => option
-    .setName('osu_id')
-    .setDescription('Optional osu! user ID. Your account is detected automatically when omitted.')
+    .setName('osu_user_id')
+    .setDescription('Number in your osu! profile URL. Leave blank to use the account you sign in with.')
     .setRequired(false));
 
+// /map map_status:ranked game_mode:mania — Post a random Ranked osu!mania beatmap.
 const QUICK_MAP_COMMAND = new SlashCommandBuilder()
   .setName('map')
-  .setDescription('Post a random beatmap with cover artwork in this channel.')
+  .setDescription('Post a random osu! beatmap in this channel.')
   .addStringOption((option) => option
-    .setName('status')
+    .setName('map_status')
     .setDescription('Beatmap status. Defaults to this channel’s saved setting.')
     .addChoices(...MAP_STATUS_CHOICES))
   .addStringOption((option) => option
-    .setName('mode')
+    .setName('game_mode')
     .setDescription('Game mode. Defaults to this channel’s saved setting.')
     .addChoices(...MAP_MODE_CHOICES));
 
+// /setup — Configure the bot for this server.
 const SETUP_COMMAND = new SlashCommandBuilder()
   .setName('setup')
-  .setDescription('Configure verification, beatmap feeds and BN alerts. Inviter only.')
+  .setDescription('Set up osu! verification, roles, beatmap feeds and alerts. Inviter only.')
+  // /setup status — Show the current server settings.
   .addSubcommand((subcommand) => subcommand
     .setName('status')
-    .setDescription('View all Alren settings for this server.'))
+    .setDescription('See the current verification, beatmap feed and alert settings for this server.'))
+  // /setup verify verify_channel:#verify result_channel:#verify-done verified_role:@Verified
+  // Choose the Verify button channel, the results channel, and the role awarded after verification.
   .addSubcommand((subcommand) => subcommand
     .setName('verify')
-    .setDescription('Configure the verification panel, verified role and result channel.')
-    .addRoleOption((option) => option
-      .setName('role')
-      .setDescription('Role assigned after successful verification.'))
+    .setDescription('Choose where members verify and what happens after they pass.')
     .addChannelOption((option) => option
-      .setName('channel')
-      .setDescription('Channel for posting successful verification results.')
+      .setName('verify_channel')
+      .setDescription('Where members click Verify, e.g. #verify.')
       .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
     .addChannelOption((option) => option
-      .setName('panel')
-      .setDescription('Channel where Alren posts the Verify button.')
-      .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)))
+      .setName('result_channel')
+      .setDescription('Where Alren posts successful verifications, e.g. #verify-done.')
+      .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+    .addRoleOption((option) => option
+      .setName('verified_role')
+      .setDescription('Role given to members who pass verification, e.g. @Verified.')))
+  // /setup beatmap feed_channel:#mania game_mode:mania map_status:ranked feed_enabled:true
+  // Choose the feed channel, game mode, and map status. Use feed_enabled:false to stop the feed.
   .addSubcommand((subcommand) => subcommand
     .setName('beatmap')
-    .setDescription('Configure a beatmap feed per channel, such as Mania in #mania or Standard in #standard.')
+    .setDescription('Choose which new beatmaps Alren posts automatically in a channel.')
     .addChannelOption((option) => option
-      .setName('channel')
-      .setDescription('Channel to configure. Defaults to this channel; other feeds are unaffected.')
+      .setName('feed_channel')
+      .setDescription('Where Alren posts new beatmaps. Defaults to the current channel.')
       .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
     .addStringOption((option) => option
-      .setName('status')
-      .setDescription('Status for this channel. Choose Ranked + Loved to receive both statuses.')
+      .setName('map_status')
+      .setDescription('Which map statuses to post, e.g. Ranked, Loved or both.')
       .addChoices(...MAP_STATUS_CHOICES))
     .addStringOption((option) => option
-      .setName('mode')
-      .setDescription('Mode for this channel: Standard, Taiko, Catch, Mania or All Mode.')
+      .setName('game_mode')
+      .setDescription('Which game mode to post, e.g. osu!mania or all game modes.')
       .addChoices(...MAP_MODE_CHOICES))
     .addBooleanOption((option) => option
-      .setName('enabled')
-      .setDescription('Enable or disable the feed in the selected channel.')))
+      .setName('feed_enabled')
+      .setDescription('True starts posting; false stops posting in the selected channel.')))
+  // /setup bn-management alert_channel:#alerts game_mode:mania — Choose the alert channel and the game mode for Beatmap Nominator alerts.
   .addSubcommand((subcommand) => subcommand
     .setName('bn-management')
-    .setDescription('Manage BN request notifications and Mappers’ Guild alerts.')
+    .setDescription('Set where Beatmap Nominator and Mappers’ Guild alerts are posted.')
     .addChannelOption((option) => option
-      .setName('channel')
-      .setDescription('Channel for BN and Mappers’ Guild alerts.')
+      .setName('alert_channel')
+      .setDescription('Where Alren posts Beatmap Nominator and Mappers’ Guild alerts.')
       .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
     .addStringOption((option) => option
-      .setName('bn_mode')
-      .setDescription('BN mode to receive alerts for.')
+      .setName('game_mode')
+      .setDescription('Which game mode to follow for Beatmap Nominator alerts.')
       .addChoices(...BN_MODE_CHOICES)))
+  // /setup osu-role osu_category:Ranked Mapper discord_role:@Ranked Mapper
+  // Match an osu! category to a Discord role. Use stop_assigning:true to stop awarding it.
   .addSubcommand((subcommand) => subcommand
     .setName('osu-role')
-    .setDescription('View or configure roles based on verified osu! profiles.')
-    .addStringOption((option) => option.setName('category').setDescription('osu! group or mapping achievement.')
+    .setDescription('Choose which Discord roles Alren gives for osu! groups or mapping achievements.')
+    .addStringOption((option) => option.setName('osu_category').setDescription('Which osu! group or achievement qualifies, e.g. Ranked Mapper.')
       .addChoices(...Object.entries(PROFILE_ROLES).map(([value, name]) => ({ name, value }))))
-    .addRoleOption((option) => option.setName('role').setDescription('Discord role to assign.'))
-    .addBooleanOption((option) => option.setName('disable').setDescription('Stop assigning the selected category.')))
+    .addRoleOption((option) => option.setName('discord_role').setDescription('Discord role Alren gives to members who qualify.'))
+    .addBooleanOption((option) => option.setName('stop_assigning').setDescription('True stops awarding this role. Members keep roles already given.')))
+  // /setup osu-role-sync — Check previously verified members and award matching roles.
   .addSubcommand((subcommand) => subcommand
     .setName('osu-role-sync')
-    .setDescription('Check all verified members for configured osu! profile roles.'));
+    .setDescription('Check linked accounts in the background and give any osu! roles they qualify for.'));
 
+// Slash commands registered with Discord.
 const COMMANDS = [
   PING_COMMAND.toJSON(),
   QUICK_HELP_COMMAND.toJSON(),
@@ -214,9 +230,9 @@ function createSetupEmbed({
 }) {
   const verifyText = roleId || verifyChannelId || verifyPanelChannelId
     ? [
-      `Role · ${roleId ? `<@&${roleId}>` : 'Not configured'}`,
-      `Panel · ${verifyPanelChannelId ? `<#${verifyPanelChannelId}>` : 'Not configured'}`,
-      `Results · ${verifyChannelId ? `<#${verifyChannelId}>` : 'Not configured'}`,
+      `Verify button channel · ${verifyPanelChannelId ? `<#${verifyPanelChannelId}>` : 'Not configured'}`,
+      `Result channel · ${verifyChannelId ? `<#${verifyChannelId}>` : 'Not configured'}`,
+      `Verified role · ${roleId ? `<@&${roleId}>` : 'Not configured'}`,
     ].join('\n')
     : 'Not configured';
   const mapLines = maps.map((map) => `<#${map.channel_id}> — ${describeFilters({ mode: map.mode_filter, status: map.status_filter })}`);
@@ -367,9 +383,9 @@ function createInteractionHandler({ osuMaps, osuVerification, store }) {
           return;
         }
         if (section === 'osu-role') {
-          const category = interaction.options.getString('category');
-          const role = interaction.options.getRole('role');
-          const disable = interaction.options.getBoolean('disable');
+          const category = interaction.options.getString('osu_category') ?? interaction.options.getString('category');
+          const role = interaction.options.getRole('discord_role') ?? interaction.options.getRole('role');
+          const disable = interaction.options.getBoolean('stop_assigning') ?? interaction.options.getBoolean('disable');
           if ((role || disable) && !category) throw new Error('Select a category first.');
           if (role && disable) throw new Error('Choose a role or disable the category.');
           if (role || disable) await osuVerification.configureProfileRole(interaction.guild, category, role);
@@ -386,12 +402,12 @@ function createInteractionHandler({ osuMaps, osuVerification, store }) {
         let currentAlerts = await store.getCommunityAlertSettings(interaction.guildId);
 
         if (section === 'verify') {
-          const role = interaction.options.getRole('role');
-          const verifyChannel = interaction.options.getChannel('channel');
-          const panelChannel = interaction.options.getChannel('panel');
-          if (role || verifyChannel || panelChannel) {
+          const role = interaction.options.getRole('verified_role') ?? interaction.options.getRole('role');
+          const resultChannel = interaction.options.getChannel('result_channel') ?? interaction.options.getChannel('channel');
+          const panelChannel = interaction.options.getChannel('verify_channel') ?? interaction.options.getChannel('panel');
+          if (role || resultChannel || panelChannel) {
             currentVerify = await osuVerification.configureVerificationSettings(interaction.guild, {
-              channel: verifyChannel,
+              channel: resultChannel,
               panelChannel,
               role,
             });
@@ -405,10 +421,10 @@ function createInteractionHandler({ osuMaps, osuVerification, store }) {
         }
 
         if (section === 'beatmap') {
-          const beatmapChannel = interaction.options.getChannel('channel');
-          const mapStatus = interaction.options.getString('status');
-          const mapMode = interaction.options.getString('mode');
-          const enabled = interaction.options.getBoolean('enabled');
+          const beatmapChannel = interaction.options.getChannel('feed_channel') ?? interaction.options.getChannel('channel');
+          const mapStatus = interaction.options.getString('map_status') ?? interaction.options.getString('status');
+          const mapMode = interaction.options.getString('game_mode') ?? interaction.options.getString('mode');
+          const enabled = interaction.options.getBoolean('feed_enabled') ?? interaction.options.getBoolean('enabled');
           const channelId = beatmapChannel?.id || interaction.channelId;
           if (enabled === false) {
             await store.deleteMapSettings(interaction.guildId, channelId);
@@ -425,8 +441,8 @@ function createInteractionHandler({ osuMaps, osuVerification, store }) {
         }
 
         if (section === 'bn-management') {
-          const alertsChannel = interaction.options.getChannel('channel');
-          const bnMode = interaction.options.getString('bn_mode');
+          const alertsChannel = interaction.options.getChannel('alert_channel') ?? interaction.options.getChannel('channel');
+          const bnMode = interaction.options.getString('game_mode') ?? interaction.options.getString('bn_mode');
           if (alertsChannel || bnMode) {
             currentAlerts = {
               channel_id: alertsChannel?.id || currentAlerts?.channel_id || interaction.channelId,
@@ -483,7 +499,7 @@ function createInteractionHandler({ osuMaps, osuVerification, store }) {
         const channelId = selectedChannel?.id || current?.channel_id;
         const bnMode = selectedMode || current?.bn_mode_filter || 'all';
         if (!channelId) {
-          await interaction.editReply('Select a channel the first time, for example `/setup bn-management channel:#alerts`.');
+          await interaction.editReply('Select a channel the first time, for example `/setup bn-management alert_channel:#alerts`.');
         } else if (!selectedChannel && !selectedMode) {
           await interaction.editReply(`Community alerts are configured for <#${channelId}>. BN requests: **${describeBnMode(bnMode)}**. New Mappers’ Guild missions: **all missions**.`);
         } else {
@@ -603,8 +619,8 @@ function createInteractionHandler({ osuMaps, osuVerification, store }) {
         const result = await osuMaps.getRandomMap({
           channelId: interaction.channelId,
           guildId: interaction.guildId,
-          mode: interaction.options.getString('mode') ?? undefined,
-          status: interaction.options.getString('status') ?? undefined,
+          mode: interaction.options.getString('game_mode') ?? interaction.options.getString('mode') ?? undefined,
+          status: interaction.options.getString('map_status') ?? interaction.options.getString('status') ?? undefined,
         });
         await interaction.editReply({
           content: `🎵 **${describeFilters(result.filters)}**`,
@@ -632,8 +648,8 @@ function createInteractionHandler({ osuMaps, osuVerification, store }) {
       const context = createPrivateCommandContext(interaction);
       try {
         if (['osuverify', 'verify'].includes(interaction.commandName)) {
-          const optionName = interaction.commandName === 'verify' ? 'osu_id' : 'osu_user_id';
-          await osuVerification.begin(context, interaction.options.getString(optionName) ?? undefined);
+          const osuUserId = interaction.options.getString('osu_user_id') ?? interaction.options.getString('osu_id');
+          await osuVerification.begin(context, osuUserId ?? undefined);
         } else if (['osuverify-status', 'verify-status'].includes(interaction.commandName)) {
           await osuVerification.showStatus(context);
         }

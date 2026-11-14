@@ -1,17 +1,18 @@
 const PROFILE_ROLES = {
-  osu_team: 'osu! team',
-  developers: 'Developers',
-  featured_artist: 'Featured Artists',
-  gmt: 'Global Moderation Team',
-  technical_support: 'Technical Support Team',
-  nat: 'Nomination Assessment Team',
-  bn: 'Beatmap Nominators',
-  alumni: 'osu! Alumni',
-  project_loved: 'Project Loved Team',
-  spotlight_curators: 'Beatmap Spotlight Curators',
-  tournament_committee: 'Tournament Committee',
-  loved_mapper: 'Loved Mapper',
-  ranked_mapper: 'Ranked Mapper',
+  osu_team: 'osu! team', // Active members listed on the osu! wiki
+  developers: 'Developers', // osu! group ID 11
+  featured_artist: 'Featured Artist', // osu! group ID 35
+  gmt: 'Global Moderation Team', // osu! group ID 4
+  technical_support: 'Technical Support Team', // osu! group ID 22
+  nat: 'Nomination Assessment Team', // osu! group ID 7
+  bn: 'Beatmap Nominators', // osu! group ID 28
+  bn_probationary: 'Beatmap Nominators (Probationary)', // osu! group ID 32
+  alumni: 'osu! Alumni', // osu! group ID 16
+  project_loved: 'Project Loved', // osu! group ID 31
+  spotlight_curators: 'Beatmap Spotlight Curators', // osu! group ID 48
+  tournament_committee: 'Tournament Committee', // osu! group ID 50
+  loved_mapper: 'Loved Mapper', // At least one Loved beatmapset
+  ranked_mapper: 'Ranked Mapper', // At least one Ranked beatmapset
 };
 
 function activeOsuTeamIds(markdown) {
@@ -35,7 +36,8 @@ function eligibleProfileRoles(profile, teamIds = new Set()) {
     (profile.is_gmt === true || hasGroup([4], ['gmt'], ['global moderation team'])) && 'gmt',
     hasGroup([22], [], ['technical support team']) && 'technical_support',
     (profile.is_nat === true || hasGroup([7], ['nat'], ['nomination assessment team'])) && 'nat',
-    (profile.is_bng === true || hasGroup([28, 32], ['bng', 'bng_limited'], ['beatmap nominators', 'beatmap nominators (probationary)'])) && 'bn',
+    hasGroup([28], ['bng'], ['beatmap nominators']) && 'bn',
+    hasGroup([32], ['bng_limited'], ['beatmap nominators (probationary)']) && 'bn_probationary',
     hasGroup([16], [], ['osu! alumni']) && 'alumni',
     hasGroup([31], ['loved', 'lvd'], ['project loved', 'project loved team']) && 'project_loved',
     hasGroup([48], [], ['beatmap spotlight curators']) && 'spotlight_curators',

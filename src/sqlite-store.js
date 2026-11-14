@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const Database = require('better-sqlite3');
+const { PROFILE_ROLES } = require('./osu-profile-roles');
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS bot_access_grants (
@@ -369,7 +370,7 @@ function createSqliteStore({ dbPath = path.join(__dirname, '../data/alren.sqlite
     ).all(guildId),
     listOsuProfileRoles: async (guildId) => db.prepare(
       'SELECT category, role_id FROM osu_profile_roles WHERE guild_id = ? ORDER BY category'
-    ).all(guildId),
+    ).all(guildId).filter(({ category }) => Object.hasOwn(PROFILE_ROLES, category)),
     saveOsuProfileRole: async (guildId, category, roleId) => db.prepare(`
       INSERT INTO osu_profile_roles (guild_id, category, role_id) VALUES (?, ?, ?)
       ON CONFLICT(guild_id, category) DO UPDATE SET role_id = excluded.role_id

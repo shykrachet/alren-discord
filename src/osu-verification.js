@@ -50,8 +50,12 @@ function osuCoverUrl(user) {
   return user?.cover_url || user?.cover?.custom_url || user?.cover?.url || null;
 }
 
+function osuAvatarUrl(user) {
+  return user?.avatar_url || (user?.id ? `https://a.ppy.sh/${encodeURIComponent(user.id)}` : null);
+}
+
 function addProfileArtwork(embed, user, fallbackAvatarUrl) {
-  const avatar = user?.avatar_url || (user?.id ? `https://a.ppy.sh/${encodeURIComponent(user.id)}` : null);
+  const avatar = osuAvatarUrl(user);
   const cover = osuCoverUrl(user);
   if (avatar || fallbackAvatarUrl) embed.setThumbnail(avatar || fallbackAvatarUrl);
   if (cover) embed.setImage(cover);
@@ -159,6 +163,8 @@ function createVerificationMessage({ authorizationUrl, guildName, osuProfile, we
     .setColor(0xff66aa)
     .setTitle(welcome ? `👋 Welcome to ${guildName}` : '✅ Verify your osu! account')
     .setDescription(`${identity}Private link · Expires in 10 minutes`);
+  const avatar = osuAvatarUrl(osuProfile);
+  if (avatar) embed.setThumbnail(avatar);
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setLabel('Verify with osu!')
@@ -229,11 +235,11 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
   async function getVerificationRole(guild) {
     const roleId = await store.getVerificationRole(guild.id);
     if (!roleId) {
-      throw new Error('An administrator must set the verification role first with `/setup verify role:@Verified`.');
+      throw new Error('An administrator must set the verification role first with `/setup verify verified_role:@Verified`.');
     }
     const role = guild.roles.cache.get(roleId) ?? await guild.roles.fetch(roleId).catch(() => null);
     if (!role) {
-      throw new Error('The configured verification role no longer exists. Set it again with `/setup verify role:@Verified`.');
+      throw new Error('The configured verification role no longer exists. Set it again with `/setup verify verified_role:@Verified`.');
     }
     const me = await validateAssignableRole(guild, role);
     return { role, me };
@@ -769,15 +775,15 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
     const channelId = channel?.id || current.channel_id || null;
     const panelChannelId = panelChannel?.id || current.panel_channel_id || null;
     if (!roleId) {
-      throw new Error('Select a verified role the first time, for example `/setup verify role:@Verified panel:#verify channel:#verify-done`.');
+      throw new Error('Select a verified role the first time, for example `/setup verify verify_channel:#verify result_channel:#verify-done verified_role:@Verified`.');
     }
-    if (panelChannelId && !channelId) throw new Error('Select a result channel with the channel option.');
+    if (panelChannelId && !channelId) throw new Error('Select a result channel with the result_channel option.');
     if (panelChannelId && panelChannelId === channelId) throw new Error('Choose separate verification and result channels.');
     if (panelChannel && !role) await getVerificationRole(guild);
     if (channel || panelChannel) {
       const me = guild.members.me ?? await guild.members.fetchMe();
       const resultChannel = channel ?? await guild.channels.fetch(channelId);
-      if (!resultChannel) throw new Error('Select a result channel with the channel option.');
+      if (!resultChannel) throw new Error('Select a result channel with the result_channel option.');
       for (const target of [resultChannel, panelChannel].filter(Boolean)) {
         if (!target.permissionsFor(me)?.has([
           PermissionsBitField.Flags.ViewChannel,
@@ -816,7 +822,7 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
     if (denied) { await message.reply(denied); return; }
     const role = selectedRole || message.mentions?.roles?.first();
     if (!role) {
-      await message.reply('Usage: `!verify-setting @Verified` or `/setup verify role:@Verified channel:#verify-log`.');
+      await message.reply('Usage: `!verify-setting @Verified` or `/setup verify result_channel:#verify-log verified_role:@Verified`.');
       return;
     }
 
@@ -832,7 +838,7 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
     if (!message.inGuild()) return;
     const roleId = await store.getVerificationRole(message.guildId);
     if (!roleId) {
-      await message.reply('No verification role is configured. Use `/setup verify role:@Verified`.');
+      await message.reply('No verification role is configured. Use `/setup verify verified_role:@Verified`.');
       return;
     }
     await message.reply(`The current osu! verification role is <@&${roleId}>.`);

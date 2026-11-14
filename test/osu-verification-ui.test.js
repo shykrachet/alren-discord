@@ -5,7 +5,7 @@ const {
   createVerificationMessage,
 } = require('../src/osu-verification');
 
-test('verification card shows only the account, link lifetime and OAuth button', () => {
+test('verification card shows the account avatar, link lifetime and OAuth button', () => {
   const payload = createVerificationMessage({
     authorizationUrl: 'https://osu.ppy.sh/oauth/authorize?state=test',
     guildName: 'Test server',
@@ -20,7 +20,7 @@ test('verification card shows only the account, link lifetime and OAuth button',
   const row = payload.components[0].toJSON();
 
   assert.equal(embed.description, '**Player** (osu! ID 123)\nPrivate link · Expires in 10 minutes');
-  assert.equal(embed.thumbnail, undefined);
+  assert.equal(embed.thumbnail.url, 'https://example.com/avatar.png');
   assert.equal(embed.image, undefined);
   assert.equal(embed.fields, undefined);
   assert.match(row.components[0].url, /osu\.ppy\.sh\/oauth\/authorize/);

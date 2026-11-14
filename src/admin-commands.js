@@ -2,15 +2,19 @@ const { randomBytes } = require('node:crypto');
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags, SlashCommandBuilder } = require('discord.js');
 const { setupAccess, resolveInviter } = require('./setup-access');
 
+// /access grant member:@member — Let a member use bot commands.
+// /access revoke member:@member — Remove a member’s access to bot commands.
+// /access list — List members who can use bot commands.
 const ACCESS_COMMAND = new SlashCommandBuilder().setName('access')
-  .setDescription('Manage access to Alren. Server inviter only.')
+  .setDescription('Choose who can use Alren commands in this server. Inviter only.')
   .addSubcommand((sub) => sub.setName('grant').setDescription('Allow a member to use Alren.')
-    .addUserOption((option) => option.setName('user').setDescription('Server member to allow.').setRequired(true)))
+    .addUserOption((option) => option.setName('member').setDescription('Discord member who should be able to use Alren commands.').setRequired(true)))
   .addSubcommand((sub) => sub.setName('revoke').setDescription('Remove a member’s access to Alren.')
-    .addUserOption((option) => option.setName('user').setDescription('Member whose access will be removed.').setRequired(true)))
+    .addUserOption((option) => option.setName('member').setDescription('Discord member who should lose access to Alren commands.').setRequired(true)))
   .addSubcommand((sub) => sub.setName('list').setDescription('View members allowed to use Alren.'));
+// /reset — Clear the server’s bot settings after confirmation.
 const RESET_COMMAND = new SlashCommandBuilder().setName('reset')
-  .setDescription('Reset this server’s Alren settings after confirmation. Inviter only.');
+  .setDescription('Clear this server’s bot settings after confirmation. Linked accounts are kept.');
 
 function card(title, description, color = 0xff66aa) {
   return new EmbedBuilder().setColor(color).setTitle(title).setDescription(description)
@@ -77,7 +81,7 @@ function createAdminHandler({ store, now = Date.now }) {
         `**Server inviter**\n${inviter ? `<@${inviter}>` : 'Not identified'}\n\n**Members with access · ${grants.length}**\n${visible || 'No members granted access yet.'}${grants.length > 50 ? `\n… ${grants.length - 50} more members` : ''}\n\nGranted members can use everyday commands. Only the inviter can manage access, setup and reset.`)], allowedMentions: { parse: [] } });
       return true;
     }
-    const user = interaction.options.getUser('user', true);
+    const user = interaction.options.getUser('member') ?? interaction.options.getUser('user', true);
     if (action === 'grant') {
       const member = await interaction.guild.members.fetch(user.id).catch(() => null);
       if (!member || user.bot) {
