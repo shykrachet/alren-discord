@@ -10,6 +10,8 @@ const {
 const { createMapEmbed } = require('./osu-maps');
 const { modeIcon } = require('./mode-icons');
 
+const ALREN_DEV_APPLICATION_ID = '1571056197719695421';
+
 const MAP_STATUS_CHOICES = [
   { name: 'Ranked', value: 'ranked' },
   { name: 'Qualified', value: 'qualified' },
@@ -248,13 +250,13 @@ async function registerSlashCommands({ client, token, rest: providedRest }) {
 
   const rest = createRest(token, providedRest);
   const applicationId = getApplicationId(client);
+  const isDev = applicationId === ALREN_DEV_APPLICATION_ID;
 
   // Global commands automatically become available in every server where the
   // app is installed, including servers that add the bot after it starts.
-  await rest.put(
-    Routes.applicationCommands(applicationId),
-    { body: COMMANDS },
-  );
+  if (!isDev) {
+    await rest.put(Routes.applicationCommands(applicationId), { body: COMMANDS });
+  }
 
   // Keep guild commands current as well: guild updates are available immediately,
   // while clients may still hold an older global command definition.
@@ -268,6 +270,14 @@ async function registerSlashCommands({ client, token, rest: providedRest }) {
     }
   });
   const synced = syncResults.filter((result) => result.status === 'fulfilled').length;
+  if (isDev) {
+    if (synced === guilds.length) {
+      // Clear previously registered global commands after their guild replacements are ready.
+      await rest.put(Routes.applicationCommands(applicationId), { body: [] });
+      console.log(`cleared Alren-Dev global slash commands; synced ${synced}/${guilds.length} server(s)`);
+    }
+    return;
+  }
   console.log(`registered ${COMMANDS.length} global slash command(s); synced ${synced}/${guilds.length} server(s)`);
 }
 

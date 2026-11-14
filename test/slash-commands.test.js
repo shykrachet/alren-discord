@@ -521,3 +521,21 @@ test('a failed guild sync does not prevent other servers receiving current comma
   assert.ok(calls.every((call) => call.payload.body.length === 8));
   assert.ok(warnings.some((warning) => warning.includes('failed') && warning.includes('Missing Access')));
 });
+
+test('Alren-Dev replaces its global commands with guild commands', async () => {
+  const calls = [];
+  const id = '1571056197719695421';
+  await registerSlashCommands({
+    client: {
+      application: { id },
+      user: { id },
+      guilds: { cache: new Map([['test', { id: 'test' }]]) },
+    },
+    rest: { async put(route, { body }) { calls.push({ route, body }); } },
+  });
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].route, `/applications/${id}/guilds/test/commands`);
+  assert.ok(calls[0].body.some(({ name }) => name === 'setup'));
+  assert.deepEqual(calls[1], { route: `/applications/${id}/commands`, body: [] });
+});
