@@ -45,7 +45,7 @@ function createHelpEmbed() {
       { name: '✅ Verify your account', value: '`/verify` — link your osu! account\n`/verify-status` — view your linked profile', inline: true },
       { name: '🎵 Discover beatmaps', value: '`/map` — find a random beatmap\nFilter by status and game mode.', inline: true },
       { name: 'ℹ️ Quick tools', value: '`/ping` — check bot latency\n`/help` — open this guide', inline: false },
-      { name: '🔒 Server controls', value: 'Only the person who invited Alren can manage the server. Administrator and Manage Server permissions do not grant access.\n\n`/setup status` — review settings\n`/setup verify` — role and result channel\n`/setup beatmap` — feeds per channel\n`/setup bn-management` — community alerts' },
+      { name: '🔒 Server controls', value: 'Only the person who invited Alren can manage the server. Administrator and Manage Server permissions do not grant access.\n\n`/setup status` — review settings\n`/setup verify` — verification panel, role and result channel\n`/setup beatmap` — feeds per channel\n`/setup bn-management` — community alerts' },
       { name: '🔑 Access & reset', value: '`/access grant user:@member` — allow a member\n`/access revoke user:@member` — remove access\n`/access list` — review access\n`/reset` — reset settings with a confirmation step\nGranted members can use everyday commands; server controls remain restricted.' },
       { name: '📌 Feed example', value: '`/setup beatmap channel:#mania mode:mania status:ranked_loved`\nRepeat for each channel. Use `enabled:false` to stop a feed.' },
       { name: '🌐 Full command guide', value: `[Open the web guide](${COMMANDS_URL})` },

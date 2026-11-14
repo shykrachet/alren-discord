@@ -171,7 +171,7 @@ for reference and are no longer used by the running bot.
 | `/access list` | View members granted access. Inviter only. |
 | `/reset` | Clear server settings after a 60-second confirmation. Keeps linked osu! accounts, access grants and inviter identity. Inviter only. |
 | `/setup status` | Overview of server settings (verification, feed, alerts). |
-| `/setup verify <role> [channel]` | Configure verified role and public announcement channel. |
+| `/setup verify [role] [channel] [panel]` | Configure the verified role, result channel and channel with the Verify button. |
 | `/setup beatmap [channel] [status] [mode] [enabled]` | Set up automatic beatmap filters per channel, or disable that channel’s feed. Defaults to the current channel. |
 | `/setup bn-management [channel] [bn_mode]` | Set up BN and Mappers' Guild alerts channel. |
 
@@ -202,6 +202,8 @@ This watches Ranked and Loved separately and posts new maps from both statuses. 
 `/map` uses the current channel’s saved filters unless you supply overrides. Unconfigured channels default to any mode and Ranked. `/setup status` lists the configured feeds. To stop only one feed, run `/setup beatmap channel:#mania enabled:false`.
 
 ### Legacy Prefix Commands
+
+To enable the verification panel, run `/setup verify role:@Verified channel:#verify-done panel:#verify` as the inviter. Allow members to view `#verify` and give Alren View Channel, Send Messages and Embed Links in both channels. Members click **Verify**, enter the numeric ID from their osu! profile URL, and receive a private link in `#verify`. After osu! confirms the account, Alren assigns the verified role and posts the linked Discord member and osu! profile in `#verify-done`. Run setup with `panel` again to repost or move the panel.
 
 Prefix commands using `!` (such as `!help`, `!map`, and `!osuverify`) remain supported as fallbacks.
 

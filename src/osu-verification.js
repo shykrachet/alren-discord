@@ -2,7 +2,8 @@ const { setupAccess } = require('./setup-access');
 const crypto = require('node:crypto');
 const http = require('node:http');
 const {
-  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, PermissionsBitField,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, LabelBuilder, MessageFlags,
+  ModalBuilder, PermissionsBitField, TextInputBuilder, TextInputStyle,
 } = require('discord.js');
 const {
   OSU_CLIENT_ID,
@@ -13,6 +14,20 @@ const {
 const { modeIcon, modeLabel, normalizeMode } = require('./mode-icons');
 
 const STATE_TTL_MS = 10 * 60 * 1000;
+const PANEL_BUTTON = 'alren-verify:open';
+const PANEL_MODAL_PREFIX = 'alren-verify:submit:';
+
+function createVerificationPanel() {
+  return {
+    embeds: [new EmbedBuilder()
+      .setColor(0xff66aa)
+      .setTitle('✅ Verify your osu! account')
+      .setDescription('Click **Verify**, enter your numeric osu! user ID, then sign in to osu! using the private link Alren sends here.')],
+    components: [new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(PANEL_BUTTON).setLabel('Verify').setStyle(ButtonStyle.Primary),
+    )],
+  };
+}
 
 function osuProfileUrl(user) {
   return user?.id ? `https://osu.ppy.sh/users/${encodeURIComponent(user.id)}` : null;
@@ -334,7 +349,7 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
 
     if (!pending || new Date(pending.expires_at).getTime() < Date.now() || !code) {
       response.writeHead(400, { 'content-type': 'text/html; charset=utf-8' });
-      response.end(htmlPage('Link expired', 'Return to Discord and run /verify or !osuverify again.'));
+      response.end(htmlPage('Link expired', 'Return to Discord and start verification again.'));
       return;
     }
 
@@ -382,7 +397,8 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
               nicknameUpdated: result.nicknameUpdated,
               osuUser,
               role: result.role,
-            })],
+            }).addFields({ name: 'Discord member', value: `<@${pending.discord_user_id}>`, inline: true })],
+            allowedMentions: { parse: [] },
           });
         }
       } catch (error) {
@@ -417,7 +433,53 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
     if (configError) console.warn(`osu! verification is disabled: ${configError}`);
   }
 
-  async function begin(message, osuUserId) {
+  async function handlePanelInteraction(interaction) {
+    const button = interaction.isButton?.() && interaction.customId === PANEL_BUTTON;
+    const modal = interaction.isModalSubmit?.() && interaction.customId.startsWith(PANEL_MODAL_PREFIX);
+    if (!button && !modal) return false;
+
+    if (modal) await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const settings = interaction.inGuild() && await store.getVerificationSettings(interaction.guildId);
+    const panelMessageId = button ? interaction.message.id : interaction.customId.slice(PANEL_MODAL_PREFIX.length);
+    if (!settings?.panel_channel_id || settings.panel_channel_id !== interaction.channelId
+      || settings.panel_message_id !== panelMessageId) {
+      const content = 'This verification panel is no longer active. Use the current panel for this server.';
+      if (modal) await interaction.editReply({ content });
+      else await interaction.reply({ content, flags: MessageFlags.Ephemeral });
+      return true;
+    }
+
+    if (button) {
+      await interaction.showModal(new ModalBuilder()
+        .setCustomId(`${PANEL_MODAL_PREFIX}${panelMessageId}`)
+        .setTitle('Verify your osu! account')
+        .addLabelComponents(new LabelBuilder()
+          .setLabel('osu! user ID')
+          .setTextInputComponent(new TextInputBuilder()
+            .setCustomId('osu_id')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
+            .setMaxLength(20))));
+      return true;
+    }
+
+    const osuUserId = interaction.fields.getTextInputValue('osu_id').trim().replace(/^0+/, '');
+    if (!/^\d{1,20}$/.test(osuUserId)) {
+      await interaction.editReply({ content: 'Enter the numeric osu! ID from your profile URL.' });
+      return true;
+    }
+    await begin({
+      author: interaction.user,
+      channelId: interaction.channelId,
+      guild: interaction.guild,
+      guildId: interaction.guildId,
+      inGuild: () => interaction.inGuild(),
+      reply: (payload) => interaction.editReply(typeof payload === 'string' ? { content: payload } : payload),
+    }, osuUserId, { inChannel: true });
+    return true;
+  }
+
+  async function begin(message, osuUserId, { inChannel = false } = {}) {
     if (!message.inGuild()) {
       await message.reply('Use this command in a Discord server.');
       return;
@@ -470,18 +532,24 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
       return;
     }
     try {
-      await message.author.send(createVerificationMessage({
+      const link = createVerificationMessage({
         authorizationUrl: createAuthorizationUrl(state),
         botAvatarUrl: bot.user?.displayAvatarURL?.(),
         guildName: message.guild?.name || 'this server',
         osuProfile,
-      }));
+      });
+      if (inChannel) {
+        await message.reply(link);
+        return;
+      }
+      await message.author.send(link);
       await message.reply('📩 Your private verification link was sent by DM. Enable direct messages from server members if you cannot find it.');
     } catch (error) {
       await store.deleteVerificationRequest(state).catch((deleteError) => {
         console.error('Could not remove failed verification request:', deleteError.message);
       });
-      console.error('Could not send osu! verification DM:', error.message);
+      console.error('Could not send osu! verification link:', error.message);
+      if (inChannel) throw error;
       await message.reply('I could not send you a DM. Enable “Allow direct messages from server members”, then run `/verify` or `!osuverify` again.');
     }
   }
@@ -489,6 +557,7 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
   async function sendWelcomeVerification(member) {
     if (!member || member.user.bot || getConfigError(store) || !server) return false;
     try {
+      if ((await store.getVerificationSettings?.(member.guild.id))?.panel_channel_id) return false;
       if (await store.getVerification(member.guild.id, member.id)) return false;
       await getVerificationRole(member.guild);
       const state = crypto.randomBytes(32).toString('hex');
@@ -561,7 +630,7 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
     return role;
   }
 
-  async function configureVerificationSettings(guild, { channel, role }) {
+  async function configureVerificationSettings(guild, { channel, panelChannel, role }) {
     const current = store.getVerificationSettings
       ? await store.getVerificationSettings(guild.id).catch((error) => {
         throw new Error(`Could not read verification settings: ${error.message}`);
@@ -573,11 +642,44 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
       roleId = role.id;
     }
     const channelId = channel?.id || current.channel_id || null;
+    const panelChannelId = panelChannel?.id || current.panel_channel_id || null;
     if (!roleId) {
-      throw new Error('Select a verified role the first time, for example `/setup verify role:@Verified channel:#verify-log`.');
+      throw new Error('Select a verified role the first time, for example `/setup verify role:@Verified panel:#verify channel:#verify-done`.');
     }
-    await store.saveVerificationSettings(guild.id, { channelId, roleId });
-    return { channelId, roleId };
+    if (panelChannelId && !channelId) throw new Error('Select a result channel with the channel option.');
+    if (panelChannelId && panelChannelId === channelId) throw new Error('Choose separate verification and result channels.');
+    if (panelChannel && !role) await getVerificationRole(guild);
+    if (channel || panelChannel) {
+      const me = guild.members.me ?? await guild.members.fetchMe();
+      const resultChannel = channel ?? await guild.channels.fetch(channelId);
+      if (!resultChannel) throw new Error('Select a result channel with the channel option.');
+      for (const target of [resultChannel, panelChannel].filter(Boolean)) {
+        if (!target.permissionsFor(me)?.has([
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages,
+          PermissionsBitField.Flags.EmbedLinks,
+        ])) {
+          throw new Error(`Alren needs View Channel, Send Messages and Embed Links in <#${target.id}>.`);
+        }
+      }
+    }
+
+    const panelMessage = panelChannel ? await panelChannel.send(createVerificationPanel()) : null;
+    try {
+      await store.saveVerificationSettings(guild.id, { channelId, roleId, panelChannelId: panelChannel?.id, panelMessageId: panelMessage?.id });
+    } catch (error) {
+      await panelMessage?.delete().catch(() => {});
+      throw error;
+    }
+    if (panelMessage && current.panel_message_id) {
+      try {
+        const previousChannel = await guild.channels.fetch(current.panel_channel_id);
+        await previousChannel?.messages.delete(current.panel_message_id);
+      } catch (error) {
+        if (error.code !== 10008 && error.code !== 10003) console.warn('Could not remove the old verification panel:', error.message);
+      }
+    }
+    return { channelId, panelChannelId, roleId };
   }
 
   async function setVerificationRole(message, selectedRole) {
@@ -634,6 +736,7 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
     begin,
     configureVerificationSettings,
     configureVerificationRole,
+    handlePanelInteraction,
     sendWelcomeVerification,
     setVerificationRole,
     showStatus,

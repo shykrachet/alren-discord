@@ -72,13 +72,17 @@ const SETUP_COMMAND = new SlashCommandBuilder()
     .setDescription('View all Alren settings for this server.'))
   .addSubcommand((subcommand) => subcommand
     .setName('verify')
-    .setDescription('Configure the verified role and verification result channel.')
+    .setDescription('Configure the verification panel, verified role and result channel.')
     .addRoleOption((option) => option
       .setName('role')
       .setDescription('Role assigned after successful verification.'))
     .addChannelOption((option) => option
       .setName('channel')
       .setDescription('Channel for posting successful verification results.')
+      .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+    .addChannelOption((option) => option
+      .setName('panel')
+      .setDescription('Channel where Alren posts the Verify button.')
       .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)))
   .addSubcommand((subcommand) => subcommand
     .setName('beatmap')
@@ -193,10 +197,14 @@ function createMapStatusEmbed(map) {
 }
 
 function createSetupEmbed({
-  alerts, maps = [], roleId, updated, verifyChannelId,
+  alerts, maps = [], roleId, updated, verifyChannelId, verifyPanelChannelId,
 }) {
-  const verifyText = roleId || verifyChannelId
-    ? `${roleId ? `<@&${roleId}>` : 'No role'}\n${verifyChannelId ? `<#${verifyChannelId}>` : 'No result channel'}`
+  const verifyText = roleId || verifyChannelId || verifyPanelChannelId
+    ? [
+      `Role · ${roleId ? `<@&${roleId}>` : 'Not configured'}`,
+      `Panel · ${verifyPanelChannelId ? `<#${verifyPanelChannelId}>` : 'Not configured'}`,
+      `Results · ${verifyChannelId ? `<#${verifyChannelId}>` : 'Not configured'}`,
+    ].join('\n')
     : 'Not configured';
   const mapLines = maps.map((map) => `<#${map.channel_id}> — ${describeFilters({ mode: map.mode_filter, status: map.status_filter })}`);
   const visibleMapLines = [];
@@ -280,6 +288,7 @@ function createInteractionHandler({ osuMaps, osuVerification, store }) {
   const handleAdmin = createAdminHandler({ store });
   return async (interaction) => {
     if (await handleAdmin(interaction)) return;
+    if (await osuVerification?.handlePanelInteraction?.(interaction)) return;
     if (interaction.isStringSelectMenu?.() && interaction.customId === 'alrenhelp:language') {
       const denied = await commandAccess(interaction, store);
       if (denied) { await interaction.reply({ content: denied, flags: MessageFlags.Ephemeral }); return; }
@@ -335,13 +344,16 @@ function createInteractionHandler({ osuMaps, osuVerification, store }) {
         if (section === 'verify') {
           const role = interaction.options.getRole('role');
           const verifyChannel = interaction.options.getChannel('channel');
-          if (role || verifyChannel) {
+          const panelChannel = interaction.options.getChannel('panel');
+          if (role || verifyChannel || panelChannel) {
             currentVerify = await osuVerification.configureVerificationSettings(interaction.guild, {
               channel: verifyChannel,
+              panelChannel,
               role,
             });
             currentVerify = {
               channel_id: currentVerify.channelId,
+              panel_channel_id: currentVerify.panelChannelId,
               role_id: currentVerify.roleId,
             };
             updated = true;
@@ -391,6 +403,7 @@ function createInteractionHandler({ osuMaps, osuVerification, store }) {
             roleId: currentVerify?.role_id,
             updated,
             verifyChannelId: currentVerify?.channel_id,
+            verifyPanelChannelId: currentVerify?.panel_channel_id,
           })],
         });
       } catch (error) {

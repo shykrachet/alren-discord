@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS osu_verification_settings (
   guild_id TEXT PRIMARY KEY,
   role_id TEXT,
   channel_id TEXT,
+  panel_channel_id TEXT,
+  panel_message_id TEXT,
   updated_at TEXT NOT NULL
 );
 
@@ -87,6 +89,12 @@ function createSqliteStore({ dbPath = path.join(__dirname, '../data/alren.sqlite
 
   // Initialize database schema
   db.exec(SCHEMA);
+  const verificationColumns = db.pragma('table_info(osu_verification_settings)');
+  for (const column of ['panel_channel_id', 'panel_message_id']) {
+    if (!verificationColumns.some(({ name }) => name === column)) {
+      db.exec(`ALTER TABLE osu_verification_settings ADD COLUMN ${column} TEXT`);
+    }
+  }
   if (!db.pragma('table_info(bot_access_grants)').some((column) => column.name === 'joined_at')) {
     db.exec("ALTER TABLE bot_access_grants ADD COLUMN joined_at TEXT NOT NULL DEFAULT ''");
   }
@@ -134,7 +142,7 @@ function createSqliteStore({ dbPath = path.join(__dirname, '../data/alren.sqlite
       'SELECT role_id FROM osu_verification_settings WHERE guild_id = ? LIMIT 1'
     ),
     getVerificationSettings: db.prepare(
-      'SELECT role_id, channel_id FROM osu_verification_settings WHERE guild_id = ? LIMIT 1'
+      'SELECT role_id, channel_id, panel_channel_id, panel_message_id FROM osu_verification_settings WHERE guild_id = ? LIMIT 1'
     ),
     saveVerificationRole: db.prepare(`
       INSERT INTO osu_verification_settings (guild_id, role_id, updated_at)
@@ -144,11 +152,13 @@ function createSqliteStore({ dbPath = path.join(__dirname, '../data/alren.sqlite
         updated_at = excluded.updated_at
     `),
     saveVerificationSettings: db.prepare(`
-      INSERT INTO osu_verification_settings (guild_id, channel_id, role_id, updated_at)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO osu_verification_settings (guild_id, channel_id, role_id, panel_channel_id, panel_message_id, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(guild_id) DO UPDATE SET
         channel_id = excluded.channel_id,
         role_id = excluded.role_id,
+        panel_channel_id = COALESCE(excluded.panel_channel_id, osu_verification_settings.panel_channel_id),
+        panel_message_id = COALESCE(excluded.panel_message_id, osu_verification_settings.panel_message_id),
         updated_at = excluded.updated_at
     `),
     getMapSettings: db.prepare(
@@ -249,8 +259,8 @@ function createSqliteStore({ dbPath = path.join(__dirname, '../data/alren.sqlite
     stmts.saveVerificationRole.run(guildId, roleId, new Date().toISOString());
   }
 
-  async function saveVerificationSettings(guildId, { channelId, roleId }) {
-    stmts.saveVerificationSettings.run(guildId, channelId ?? null, roleId ?? null, new Date().toISOString());
+  async function saveVerificationSettings(guildId, { channelId, roleId, panelChannelId, panelMessageId }) {
+    stmts.saveVerificationSettings.run(guildId, channelId ?? null, roleId ?? null, panelChannelId ?? null, panelMessageId ?? null, new Date().toISOString());
   }
 
   async function getMapSettings(guildId, channelId) {
