@@ -30,6 +30,14 @@ const bot = new Client({
 });
 
 const verificationStore = createSqliteStore({ dbPath: SQLITE_PATH });
+if (process.env.RAILWAY_SERVICE_ID) {
+  const mount = process.env.RAILWAY_VOLUME_MOUNT_PATH;
+  const path = require('node:path');
+  const relative = mount && path.relative(path.resolve(mount), path.resolve(SQLITE_PATH));
+  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    console.warn('SQLite is outside a Railway Volume. Server settings can be lost on redeploy. Mount a volume and point SQLITE_PATH to the existing database on that volume.');
+  }
+}
 const communityAlerts = createCommunityAlertsService();
 const osuMaps = createOsuMapService({ store: verificationStore });
 const osuVerification = createOsuVerificationService({
@@ -59,6 +67,7 @@ bot.once('clientReady', async () => {
   } catch (error) {
     console.error('Could not start the HTTP API:', error.message);
   }
+  osuVerification.startProfileRoleMonitor();
   osuMaps.startFeed(async ({ map, settings }) => {
     const channel = await bot.channels.fetch(settings.channelId);
     if (!channel?.isTextBased() || typeof channel.send !== 'function') {

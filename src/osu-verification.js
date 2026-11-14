@@ -15,6 +15,7 @@ const {
 const { modeIcon, modeLabel, normalizeMode } = require('./mode-icons');
 const { PROFILE_ROLES, activeOsuTeamIds, eligibleProfileRoles } = require('./osu-profile-roles');
 
+const PROFILE_ROLE_SYNC_INTERVAL_MS = 15 * 60 * 1000;
 const STATE_TTL_MS = 10 * 60 * 1000;
 const PANEL_BUTTON = 'alren-verify:open';
 const PANEL_MODAL_PREFIX = 'alren-verify:submit:';
@@ -204,7 +205,9 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
   let publicToken;
   let publicTokenRequest;
   let teamRosterRequest;
-  const activeRoleSyncs = new Set();
+  const activeRoleSyncs = new Map();
+  const memberRoleSyncs = new Map();
+  let roleMonitorStarted = false;
 
   function createAuthorizationUrl(state) {
     const authorizationUrl = new URL('https://osu.ppy.sh/oauth/authorize');
@@ -270,9 +273,28 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
     }
   }
 
+  function syncMemberProfileRoles(member, profile) {
+    const key = `${member.guild.id}:${member.id}`;
+    const previous = memberRoleSyncs.get(key) ?? Promise.resolve();
+    const task = previous.catch(() => {}).then(async () => {
+      const current = await member.guild.members.fetch({ user: member.id, force: true });
+      return assignProfileRoles(current, profile);
+    });
+    memberRoleSyncs.set(key, task);
+    return task.finally(() => {
+      if (memberRoleSyncs.get(key) === task) memberRoleSyncs.delete(key);
+    });
+  }
+
   async function assignProfileRoles(member, profile) {
-    const enabled = await store.listOsuProfileRoles(member.guild.id);
+    const guildId = member.guild.id;
+    const linked = await store.getVerification(guildId, member.id);
+    if (String(linked?.osu_user_id) !== String(profile.id)) return { assigned: [], removed: 0, failed: 0 };
+    const enabled = await store.listOsuProfileRoles(guildId);
+    const tracked = new Set((await store.listOsuProfileRoleGrants(guildId, member.id)).map(({ role_id }) => role_id));
+    const verifiedRole = await store.getVerificationRole(guildId);
     let failed = 0;
+    let removed = 0;
     let teamIds;
     if (enabled.some(({ category }) => category === 'osu_team')) {
       try {
@@ -284,57 +306,104 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
     }
     const eligible = eligibleProfileRoles(profile, teamIds);
     const assigned = [];
+    const keep = new Set([verifiedRole]);
+    const checked = new Set();
+    for (const { category, role_id: roleId } of enabled) {
+      const known = category === 'osu_team' ? teamIds !== undefined
+        : category === 'ranked_mapper' ? Number.isInteger(profile.ranked_beatmapset_count)
+        : category === 'loved_mapper' ? Number.isInteger(profile.loved_beatmapset_count)
+        : Array.isArray(profile.groups);
+      if (known) checked.add(roleId);
+      if (!known || eligible.has(category)) keep.add(roleId);
+    }
     for (const { category, role_id: roleId } of enabled) {
       if (!eligible.has(category)) continue;
       try {
         const role = member.guild.roles.cache.get(roleId) ?? await member.guild.roles.fetch(roleId);
         await validateAssignableRole(member.guild, role);
-        if (!member.roles.cache.has(roleId)) await member.roles.add(role, 'Matched verified osu! profile');
+        if (!member.roles.cache.has(roleId)) {
+          member = await member.roles.add(role, 'Matched verified osu! profile');
+          await store.saveOsuProfileRoleGrant(guildId, member.id, roleId);
+        }
         assigned.push(PROFILE_ROLES[category]);
       } catch (error) {
         failed++;
-        console.warn(`Could not assign osu! role ${category} in ${member.guild.id}:`, error.message);
+        console.warn(`Could not assign osu! role ${category} in ${guildId}:`, error.message);
       }
     }
-    return { assigned, failed };
+    for (const roleId of tracked) {
+      if (!checked.has(roleId) || keep.has(roleId)) continue;
+      try {
+        const role = member.roles.cache.get(roleId);
+        if (role) {
+          await validateAssignableRole(member.guild, role);
+          member = await member.roles.remove(role, 'No longer matches verified osu! profile');
+          removed++;
+        }
+        await store.deleteOsuProfileRoleGrant(guildId, member.id, roleId);
+      } catch (error) {
+        failed++;
+        console.warn(`Could not remove osu! role ${roleId} in ${guildId}:`, error.message);
+      }
+    }
+    return { assigned, removed, failed };
+  }
+
+  async function syncVerifiedProfileRoles(guild, records, report) {
+    let matched = 0;
+    let removed = 0;
+    let skipped = 0;
+    let failed = 0;
+    for (const record of records) {
+      try {
+        const profile = await getPublicOsuUser(String(record.osu_user_id));
+        const result = await syncMemberProfileRoles({ guild, id: record.discord_user_id }, profile);
+        if (result.assigned.length) matched++;
+        removed += result.removed;
+        if (result.failed) failed++;
+      } catch (error) {
+        if (error.code === 10007) skipped++;
+        else failed++;
+      }
+      await delay(1000);
+    }
+    const summary = `osu! role sync complete. Checked ${records.length} linked accounts · ${matched} matched · ${removed} roles removed · ${skipped} no longer in server · ${failed} errors.`;
+    if (report) await report(summary);
+    else if (failed) console.warn(`Server ${guild.id}: ${summary}`);
   }
 
   async function startProfileRoleSync(guild, report) {
     if (activeRoleSyncs.has(guild.id)) return 'An osu! role sync is already running.';
     const configError = getConfigError(store);
     if (configError) throw new Error(configError);
-    activeRoleSyncs.add(guild.id);
-    let started = false;
-    try {
-      const roles = await store.listOsuProfileRoles(guild.id);
-      if (!roles.length) return 'Configure an osu! role with `/setup osu-role` first.';
-      const records = await store.listVerifiedMembers(guild.id);
-      if (!records.length) return 'There are no verified members to check.';
-      started = true;
-      void (async () => {
-        let matched = 0;
-        let skipped = 0;
-        let failed = 0;
-        for (const record of records) {
-          try {
-            const member = await guild.members.fetch(record.discord_user_id);
-            const profile = await getPublicOsuUser(String(record.osu_user_id));
-            const result = await assignProfileRoles(member, profile);
-            if (result.assigned.length) matched++;
-            if (result.failed) failed++;
-          } catch (error) {
-            if (error.code === 10007) skipped++;
-            else failed++;
-          }
-          await delay(1000);
+    const roles = await store.listOsuProfileRoles(guild.id);
+    if (!roles.length) return 'Configure an osu! role with `/setup osu-role` first.';
+    const records = await store.listVerifiedMembers(guild.id);
+    if (!records.length) return 'There are no verified members to check.';
+    if (activeRoleSyncs.has(guild.id)) return 'An osu! role sync is already running.';
+    const task = syncVerifiedProfileRoles(guild, records, report)
+      .catch((error) => console.warn('Could not finish osu! role sync:', error.message))
+      .finally(() => activeRoleSyncs.delete(guild.id));
+    activeRoleSyncs.set(guild.id, task);
+    return `Checking ${records.length} verified members in the background. Alren will post the results here.`;
+  }
+
+  function startProfileRoleMonitor() {
+    if (roleMonitorStarted || getConfigError(store)) return;
+    roleMonitorStarted = true;
+    const run = async () => {
+      for (const guild of bot.guilds.cache.values()) {
+        if (!guild.available) continue;
+        try {
+          await startProfileRoleSync(guild);
+          await activeRoleSyncs.get(guild.id);
+        } catch (error) {
+          console.warn(`Could not check osu! roles in ${guild.id}:`, error.message);
         }
-        await report(`osu! role sync complete. Checked ${records.length} linked accounts · ${matched} matched · ${skipped} no longer in server · ${failed} errors.`);
-      })().catch((error) => console.warn('Could not finish osu! role sync:', error.message))
-        .finally(() => activeRoleSyncs.delete(guild.id));
-      return `Checking ${records.length} verified members in the background. Alren will post the results here.`;
-    } finally {
-      if (!started) activeRoleSyncs.delete(guild.id);
-    }
+      }
+      setTimeout(run, PROFILE_ROLE_SYNC_INTERVAL_MS).unref();
+    };
+    void run();
   }
 
   async function exchangeCodeForOsuUser(code) {
@@ -496,7 +565,7 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
       try {
         if ((await store.listOsuProfileRoles(pending.guild_id)).length) {
           const profile = await getPublicOsuUser(String(osuUser.id));
-          ({ assigned: assignedProfileRoles } = await assignProfileRoles(result.member, profile));
+          ({ assigned: assignedProfileRoles } = await syncMemberProfileRoles(result.member, profile));
         }
       } catch (error) {
         console.warn('Could not assign verified osu! profile roles:', error.message);
@@ -876,6 +945,7 @@ function createOsuVerificationService({ apiHandler, bot, store }) {
     showVerificationRole,
     startServer,
     startProfileRoleSync,
+    startProfileRoleMonitor,
   };
 }
 

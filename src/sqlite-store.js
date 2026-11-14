@@ -38,6 +38,13 @@ CREATE TABLE IF NOT EXISTS osu_profile_roles (
   PRIMARY KEY (guild_id, category)
 );
 
+CREATE TABLE IF NOT EXISTS osu_profile_role_grants (
+  guild_id TEXT NOT NULL,
+  discord_user_id TEXT NOT NULL,
+  role_id TEXT NOT NULL,
+  PRIMARY KEY (guild_id, discord_user_id, role_id)
+);
+
 CREATE TABLE IF NOT EXISTS osu_verification_settings (
   guild_id TEXT PRIMARY KEY,
   role_id TEXT,
@@ -365,6 +372,15 @@ function createSqliteStore({ dbPath = path.join(__dirname, '../data/alren.sqlite
   });
 
   return {
+    listOsuProfileRoleGrants: async (guildId, userId) => db.prepare(
+      'SELECT role_id FROM osu_profile_role_grants WHERE guild_id = ? AND discord_user_id = ?'
+    ).all(guildId, userId),
+    saveOsuProfileRoleGrant: async (guildId, userId, roleId) => db.prepare(
+      'INSERT OR IGNORE INTO osu_profile_role_grants VALUES (?, ?, ?)'
+    ).run(guildId, userId, roleId),
+    deleteOsuProfileRoleGrant: async (guildId, userId, roleId) => db.prepare(
+      'DELETE FROM osu_profile_role_grants WHERE guild_id = ? AND discord_user_id = ? AND role_id = ?'
+    ).run(guildId, userId, roleId),
     listVerifiedMembers: async (guildId) => db.prepare(
       'SELECT discord_user_id, osu_user_id FROM osu_verifications WHERE guild_id = ? ORDER BY discord_user_id'
     ).all(guildId),
