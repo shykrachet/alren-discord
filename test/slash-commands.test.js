@@ -26,7 +26,7 @@ function createInteractionHandler(deps) {
   };
 }
 
-test('registers matching global and guild commands without deleting guild definitions', async () => {
+test('registers Main commands globally and clears duplicate guild commands', async () => {
   const calls = [];
   const rest = {
     async put(route, options) {
@@ -92,16 +92,16 @@ test('registers matching global and guild commands without deleting guild defini
   assert.deepEqual(calls.slice(1), [
     {
       route: '/applications/application-id/guilds/guild-one/commands',
-      options: { body: calls[0].options.body },
+      options: { body: [] },
     },
     {
       route: '/applications/application-id/guilds/guild-two/commands',
-      options: { body: calls[0].options.body },
+      options: { body: [] },
     },
   ]);
 });
 
-test('registers commands immediately for a newly joined guild', async () => {
+test('registers Dev commands immediately for a newly joined guild', async () => {
   const calls = [];
   const rest = {
     async put(route, options) {
@@ -109,7 +109,7 @@ test('registers commands immediately for a newly joined guild', async () => {
     },
   };
   const client = {
-    application: { id: 'application-id' },
+    application: { id: '1571056197719695421' },
     user: { id: 'bot-user-id' },
   };
 
@@ -119,7 +119,7 @@ test('registers commands immediately for a newly joined guild', async () => {
     rest,
   });
 
-  assert.deepEqual(calls.map((call) => call.route), ['/applications/application-id/guilds/new-guild/commands']);
+  assert.deepEqual(calls.map((call) => call.route), ['/applications/1571056197719695421/guilds/new-guild/commands']);
   assert.ok(calls[0].options.body.some((command) => command.name === 'verify'));
 });
 
@@ -504,7 +504,7 @@ test('legacy help language dropdown switches to the English guide and removes la
   assert.doesNotMatch(JSON.stringify(update), /\p{Script=Thai}/u);
 });
 
-test('a failed guild sync does not prevent other servers receiving current commands', async () => {
+test('a failed guild cleanup does not prevent cleanup in other servers', async () => {
   const calls = [];
   const warnings = [];
   const originalWarn = console.warn;
@@ -522,8 +522,8 @@ test('a failed guild sync does not prevent other servers receiving current comma
     console.warn = originalWarn;
   }
   assert.equal(calls.length, 3);
-  assert.ok(calls.find((call) => call.route.includes('/guilds/healthy/')).payload.body.some((command) => command.name === 'setup'));
-  assert.ok(calls.every((call) => call.payload.body.length === 8));
+  assert.deepEqual(calls.find((call) => call.route.includes('/guilds/healthy/')).payload.body, []);
+  assert.equal(calls[0].payload.body.length, 8);
   assert.ok(warnings.some((warning) => warning.includes('failed') && warning.includes('Missing Access')));
 });
 
