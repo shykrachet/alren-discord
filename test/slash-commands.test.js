@@ -266,6 +266,24 @@ function setupInteraction({ channel = null, channelId = 'commands', enabled = nu
   };
 }
 
+test('setup osu-role stops assignment when a Discord role is also supplied', async () => {
+  const interaction = setupInteraction({ section: 'osu-role', enabled: true });
+  interaction.options.getString = (name) => name === 'osu_category' ? 'bn' : null;
+  interaction.options.getRole = (name) => name === 'discord_role' ? { id: 'bn-role' } : null;
+  const calls = [];
+  const handler = createInteractionHandler({
+    store: { isConfigured: true, listOsuProfileRoles: async () => [] },
+    osuVerification: {
+      async configureProfileRole(guild, category, role) { calls.push([guild.id, category, role]); },
+    },
+  });
+
+  await handler(interaction);
+
+  assert.deepEqual(calls, [['guild', 'bn', null]]);
+  assert.match(interaction.result.content, /Stopped automatic role assignment for Beatmap Nominator/);
+});
+
 test('setup beatmap adds separate mode channels, displays every feed, and disables only the selected channel', async (t) => {
   await syncApplicationModeEmojis({
     emojis: {

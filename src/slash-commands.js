@@ -390,12 +390,12 @@ function createInteractionHandler({ osuMaps, osuVerification, store }) {
           const role = interaction.options.getRole('discord_role') ?? interaction.options.getRole('role');
           const disable = interaction.options.getBoolean('stop_assigning') ?? interaction.options.getBoolean('disable');
           if ((role || disable) && !category) throw new Error('Select a category first.');
-          if (role && disable) throw new Error('Choose a role or disable the category.');
-          if (role || disable) await osuVerification.configureProfileRole(interaction.guild, category, role);
+          if (role || disable) await osuVerification.configureProfileRole(interaction.guild, category, disable ? null : role);
           const roles = await store.listOsuProfileRoles(interaction.guildId);
+          const summary = roles.map(({ category: key, role_id: id }) => `${PROFILE_ROLES[key]} · <@&${id}>`).join('\n')
+            || 'No osu! profile roles configured.';
           await interaction.editReply({
-            content: roles.map(({ category: key, role_id: id }) => `${PROFILE_ROLES[key]} · <@&${id}>`).join('\n')
-              || 'No osu! profile roles configured.',
+            content: disable ? `Stopped automatic role assignment for ${PROFILE_ROLES[category]}. Members keep roles already given.\n\n${summary}` : summary,
             allowedMentions: { parse: [] },
           });
           return;
